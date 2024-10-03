@@ -1,4 +1,7 @@
 # sisyphus
+
+<img src="sisyphus.png" alt="Sisyphus" width="40%" height="40%"/>
+
 Sisyphus automates the manual parts of building GPU (CUDA) enabled packages.
 
 Sisyphus uses the Fabric python package to run commands on the rocket-platform dev instances and is designed to be run on a Unix-like system (Linux, MacOS).

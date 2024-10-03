@@ -5,6 +5,8 @@ import os
 import click
 import threading
 import shlex
+import uuid
+import time
 
 CONDA_BUILD_CONFIG_YAML = "https://raw.githubusercontent.com/AnacondaRecipes/aggregate/master/conda_build_config.yaml"
 LINUX_INST_USER = "ec2-user"
@@ -48,7 +50,24 @@ def connect_to_windows(host):
   return connection
 
 def cleanup_sisyphus_containers(connection):
-    connection.run("docker stop sisyphus && docker rm sisyphus")
+    try:
+        # Stop the container if it's running
+        connection.run("docker stop sisyphus", warn=True)
+    except Exception as e:
+        print(f"Warning: Failed to stop sisyphus container: {e}")
+
+    try:
+        # Remove the container if it exists
+        connection.run("docker rm sisyphus", warn=True)
+    except Exception as e:
+        print(f"Warning: Failed to remove sisyphus container: {e}")
+
+    # Check if the container still exists
+    result = connection.run("docker ps -a --filter name=sisyphus --format '{{.Names}}'", hide=True, warn=True)
+    if 'sisyphus' in result.stdout:
+        print("Warning: sisyphus container could not be fully cleaned up.")
+    else:
+        print("sisyphus container successfully cleaned up.")
 
 def build_linux(host, package, repo, branch, version, channel, label, local_save_path, conda_build_config_path):
     connection = connect_to_linux(host)
@@ -56,36 +75,77 @@ def build_linux(host, package, repo, branch, version, channel, label, local_save
     # Cleanup existing sisyphus containers
     cleanup_sisyphus_containers(connection)
 
-    connection.put(conda_build_config_path, "conda_build_config.yaml")
+    BUILDROOT = '/sisyphus'
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    linux_build_script = os.path.join(current_dir, 'scripts', 'linux-build.sh')
+    connection.put(conda_build_config_path, f"conda_build_config.yaml")
+    connection.put(linux_build_script, f"linux-build.sh")
+    connection.run(f"chmod +x linux-build.sh")
     
+    # Generate a unique session name and log file name
+    session_name = f"sisyphus_{package}_{uuid.uuid4().hex[:8]}"
+    # Screen is running on the host, not the container so use the host's path for the log:
+    log_file = f"/tmp/build_{session_name}.log"
+
     # Start the Docker container in detached mode with a placeholder process
     connection.run("docker run -d --name sisyphus -v `pwd`:/io --gpus all public.ecr.aws/y0o4y9o3/anaconda-pkg-build:main-cuda tail -f /dev/null")
-    
-    # Function to run commands in the Docker container
-    def docker_exec(cmd):
-        escaped_cmd = shlex.quote(cmd)
-        return connection.run(f"docker exec sisyphus bash -c {escaped_cmd}")
-    
-    # Run all commands in a single bash session
-    build_commands = [
-        "conda init bash",
-        "source ~/.bashrc",
-        "conda create -y -n build conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling",
-        "conda activate build",
-        f"git clone {repo}",
-        f"cd {package}-feedstock && git checkout {branch} && git pull",
-        f"conda build --error-overlinking -c ai-staging --croot=/io/sisbuild-{package}/ .",
-        f"cd /io/sisbuild-{package}/linux-64/ && cph t '*.tar.bz2' .conda"
-    ]
-    
-    docker_exec(" && ".join(build_commands))
-    
-    # Copy all *.tar.bz2 *.conda to the local machine into $LOCAL_SAVE_PATH/$PACKAGE_NAME/$VERSION/linux-64
-    linux_save_path = os.path.join(local_save_path, package, version, "linux-64")
-    os.makedirs(linux_save_path, exist_ok=True)
-    connection.get(f"./sisbuild-{package}/linux-64/*.tar.bz2", linux_save_path)
-    connection.get(f"./sisbuild-{package}/linux-64/*.conda", linux_save_path)
-    
+
+    # Make the BUILDROOT directory in the Docker container
+    connection.run(f"docker exec sisyphus mkdir -p {BUILDROOT}")
+    connection.run(f"docker exec sisyphus mkdir -p {BUILDROOT}/logs")
+
+    # Copy conda_build_config.yaml and linux-build.sh into the Docker container
+    connection.run(f"docker cp conda_build_config.yaml sisyphus:/{BUILDROOT}/conda_build_config.yaml")
+    connection.run(f"docker cp linux-build.sh sisyphus:/{BUILDROOT}/linux-build.sh")
+
+    # Start a new screen session, run the build command, and tee output to a log file
+    screen_command = f"screen -dmS {session_name} bash -c 'docker exec sisyphus {BUILDROOT}/linux-build.sh {repo} {package} {branch} 2>&1 | tee {log_file}; exec bash'"
+    connection.run(screen_command)
+
+    print(f"Build started in screen session '{session_name}'")
+    print(f"Log file: {log_file}")
+    print(f"To reconnect to the session, use: screen -r {session_name}")
+
+    # Give the process a moment to start writing to the log file
+    time.sleep(2)
+
+    # Stream the log file in real-time
+    try:
+        # Use 'cat' first to display existing content, then 'tail -f' to follow
+        connection.run(f"cat {log_file} && tail -f {log_file}", pty=True)
+    except KeyboardInterrupt:
+        print("\nOutput streaming interrupted. Build is still running in the background.")
+
+    # Wait for the screen session to finish
+    while True:
+        result = connection.run(f"screen -list | grep {session_name}", warn=True)
+        if result.failed:
+            break
+        time.sleep(10)
+
+    # Check if the build was successful
+    build_success = connection.run(f"docker exec sisyphus test -d {BUILDROOT}/sisbuild-{package}/linux-64", warn=True).ok
+
+    if build_success:
+        # First, copy files from the container to the host
+        host_temp_dir = f"/tmp/sisyphus_build_{package}"
+        connection.run(f"mkdir -p {host_temp_dir}")
+        connection.run(f"docker cp sisyphus:{BUILDROOT}/sisbuild-{package}/linux-64 {host_temp_dir}")
+
+        # Now copy from the host to the local machine
+        linux_save_path = os.path.join(local_save_path, package, version, "linux-64")
+        os.makedirs(linux_save_path, exist_ok=True)
+        connection.get(f"{host_temp_dir}/linux-64/*.tar.bz2", linux_save_path)
+        connection.get(f"{host_temp_dir}/linux-64/*.conda", linux_save_path)
+
+        # Clean up the temporary directory on the host
+        connection.run(f"rm -rf {host_temp_dir}")
+
+        print(f"Build completed successfully. Packages saved to {linux_save_path}")
+    else:
+        print(f"Build failed. You can reconnect to the session with: screen -r {session_name}")
+        print(f"Or view the full log with: cat {log_file}")
+
     # Clean up
     cleanup_sisyphus_containers(connection)
 
