@@ -104,37 +104,37 @@ def build_linux(host, package, repo, branch, version, channel, label, local_save
 
     print(f"Build started in screen session '{session_name}'")
     print(f"Log file: {log_file}")
-    print(f"To reconnect to the session, use: screen -r {session_name}")
 
-    # Give the process a moment to start writing to the log file
-    time.sleep(2)
+    # Stream the log file in real-time until build completion
+    build_completed = False
 
-    # Stream the log file in real-time
     try:
-        # Use 'cat' first to display existing content, then 'tail -f' to follow
-        connection.run(f"cat {log_file} && tail -f {log_file}", pty=True)
+        while True:
+            result = connection.run(f"tail -n 1 {log_file}", hide=True)
+            #print(result.stdout, end='', flush=True)
+            
+            if ":::BUILD_COMPLETE:::" in result.stdout:
+                build_completed = True
+                break
+            
+            time.sleep(5)
     except KeyboardInterrupt:
         print("\nOutput streaming interrupted. Build is still running in the background.")
 
-    # Wait for the screen session to finish
-    while True:
-        result = connection.run(f"screen -list | grep {session_name}", warn=True)
-        if result.failed:
-            break
-        time.sleep(10)
+    # Terminate the screen session
+    connection.run(f"screen -S {session_name} -X quit", warn=True)
 
-    # Check if the build was successful
-    build_success = connection.run(f"docker exec sisyphus test -d {BUILDROOT}/sisbuild-{package}/linux-64", warn=True).ok
-
-    if build_success:
+    if build_completed:
+        # Copy built packages
+        linux_save_path = os.path.join(local_save_path, package, version, "linux-64")
+        os.makedirs(linux_save_path, exist_ok=True)
+        
         # First, copy files from the container to the host
         host_temp_dir = f"/tmp/sisyphus_build_{package}"
         connection.run(f"mkdir -p {host_temp_dir}")
         connection.run(f"docker cp sisyphus:{BUILDROOT}/sisbuild-{package}/linux-64 {host_temp_dir}")
 
         # Now copy from the host to the local machine
-        linux_save_path = os.path.join(local_save_path, package, version, "linux-64")
-        os.makedirs(linux_save_path, exist_ok=True)
         connection.get(f"{host_temp_dir}/linux-64/*.tar.bz2", linux_save_path)
         connection.get(f"{host_temp_dir}/linux-64/*.conda", linux_save_path)
 
@@ -143,15 +143,80 @@ def build_linux(host, package, repo, branch, version, channel, label, local_save
 
         print(f"Build completed successfully. Packages saved to {linux_save_path}")
     else:
-        print(f"Build failed. You can reconnect to the session with: screen -r {session_name}")
-        print(f"Or view the full log with: cat {log_file}")
+        print(f"Build was interrupted. You can view the full log with: cat {log_file}")
 
     # Clean up
     cleanup_sisyphus_containers(connection)
 
 def build_windows(host, package, branch, version, channel, label, local_save_path, conda_build_config_path):
     connection = connect_to_windows(host)
-    connection.run()
+    
+    BUILDROOT = 'C:\\sisyphus'
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    windows_build_script = os.path.join(current_dir, 'scripts', 'windows-build.ps1')
+    
+    # Ensure the BUILDROOT directory exists
+    connection.run(f"if not exist {BUILDROOT} mkdir {BUILDROOT}")
+    
+    # Copy files to the Windows machine
+    connection.put(conda_build_config_path, f"{BUILDROOT}\\conda_build_config.yaml")
+    connection.put(windows_build_script, f"{BUILDROOT}\\windows-build.ps1")
+    
+    # Generate a unique session name and log file name
+    session_name = f"sisyphus_{package}_{uuid.uuid4().hex[:8]}"
+    log_file = f"{BUILDROOT}\\build_{session_name}.log"
+    
+    # Use the full path to screen
+    screen_path = "C:\\cygwin64\\bin\\screen.exe"
+    
+    # Start a new screen session, run the build command, and redirect output to a log file
+    screen_command = f"{screen_path} -dmS {session_name} powershell -ExecutionPolicy ByPass -File {BUILDROOT}\\windows-build.ps1 2>&1 | Tee-Object -FilePath {log_file}"
+    connection.run(screen_command)
+
+    print(f"Build started in screen session '{session_name}'")
+    print(f"Log file: {log_file}")
+    print(f"To reconnect to the session, use: {screen_path} -r {session_name}")
+
+    # Give the process a moment to start writing to the log file
+    time.sleep(2)
+
+    # Stream the log file in real-time
+    try:
+        while True:
+            result = connection.run(f"if exist {log_file} (type {log_file}) else (echo Log file not created yet)", warn=True)
+            print(result.stdout)
+            if "Build completed" in result.stdout or "Build failed" in result.stdout:
+                break
+            time.sleep(10)
+    except KeyboardInterrupt:
+        print("\nOutput streaming interrupted. Build is still running in the background.")
+
+    # Wait for the screen session to finish
+    while True:
+        result = connection.run(f"{screen_path} -list | findstr {session_name}", warn=True)
+        if result.failed:
+            break
+        time.sleep(10)
+
+    # Check if the build was successful
+    build_success = connection.run(f"if exist {BUILDROOT}\\sisbuild-{package}\\win-64 (echo Build successful) else (echo Build failed)", warn=True).stdout.strip()
+
+    if "Build successful" in build_success:
+        # Copy the built packages to the local machine
+        windows_save_path = os.path.join(local_save_path, package, version, "win-64")
+        os.makedirs(windows_save_path, exist_ok=True)
+        connection.get(f"{BUILDROOT}\\sisbuild-{package}\\win-64\\*.tar.bz2", windows_save_path)
+        connection.get(f"{BUILDROOT}\\sisbuild-{package}\\win-64\\*.conda", windows_save_path)
+
+        print(f"Build completed successfully. Packages saved to {windows_save_path}")
+    else:
+        print(f"Build failed. You can reconnect to the session with: {screen_path} -r {session_name}")
+        print(f"Or view the full log with: type {log_file}")
+
+    # Clean up
+    connection.run(f"if exist {BUILDROOT}\\sisbuild-{package} rmdir /s /q {BUILDROOT}\\sisbuild-{package}")
+
+
 
 def get_feedstock(package):
   if package not in FEEDSTOCKS:

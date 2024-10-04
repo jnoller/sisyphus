@@ -21,5 +21,21 @@ conda activate build
 git clone "$REPO"
 cd "${PACKAGE}-feedstock" && git checkout "$BRANCH" && git pull
 cd $BUILDROOT
-conda build --error-overlinking -c ai-staging --croot=$BUILDROOT/build-"$PACKAGE"/ $BUILDROOT/"$PACKAGE"-feedstock/
-cd $BUILDROOT/build-"$PACKAGE"/linux-64/ && cph t '*.tar.bz2' .conda
+echo "Building $PACKAGE -- logging output to $BUILDROOT/build-$PACKAGE/build.log"
+# Run conda build and only log the output
+mkdir -p $BUILDROOT/build-$PACKAGE
+if ! conda build --error-overlinking -c ai-staging --croot=$BUILDROOT/build-"$PACKAGE"/ $BUILDROOT/"$PACKAGE"-feedstock/ > $BUILDROOT/build-"$PACKAGE"/conda-build.log 2>&1; then
+    echo "Build failed. Last 100 lines of the conda build log:"
+    tail -n 100 $BUILDROOT/build-$PACKAGE/conda-build.log
+    exit 1
+fi
+
+echo "Build completed, transmuting packages"
+cd $BUILDROOT/build-"$PACKAGE"/linux-64/
+cph t '*.tar.bz2' .conda
+packages=$(ls *.tar.bz2 *.conda)
+for package in $packages; do
+    echo $package
+done
+echo ":::BUILD_COMPLETE:::"
+exit 0
