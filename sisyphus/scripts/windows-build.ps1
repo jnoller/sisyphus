@@ -12,27 +12,93 @@ param (
 $ErrorActionPreference = "Stop"
 
 $BUILDROOT = "C:\sisyphus"
+$TOKENDIR = "C:\sisyphus\tokens"
 
-# Install necessary packages and setup CUDA
-choco install -y curl vim
-& 'C:\miniconda3\shell\condabin\conda-hook.ps1'
-& 'C:\prefect\install_cuda_driver.ps1'
-& 'C:\prefect\install_cuda_12.3.0.ps1'
+# Create token directory if it doesn't exist
+if (-not (Test-Path $TOKENDIR)) {
+    New-Item -ItemType Directory -Force -Path $TOKENDIR | Out-Null
+}
+
+# Install CUDA
+$scripts = @(
+    @{Path="C:\prefect\install_cuda_driver.ps1"; Token="cuda_driver_installed.token"},
+    @{Path="C:\prefect\install_cuda_12.3.0.ps1"; Token="cuda_12.3.0_installed.token"}
+)
+
+foreach ($script in $scripts) {
+    if ($script -is [string]) {
+        if (Test-Path $script) {
+            Write-Host "Executing $script"
+            & $script
+        } else {
+            Write-Warning "Script not found: $script"
+        }
+    } else {
+        $scriptPath = $script.Path
+        $tokenPath = Join-Path $TOKENDIR $script.Token
+        if (Test-Path $scriptPath) {
+            if (-not (Test-Path $tokenPath)) {
+                Write-Host "Executing $scriptPath"
+                & $scriptPath
+                if ($LASTEXITCODE -eq 0) {
+                    New-Item -ItemType File -Path $tokenPath -Force | Out-Null
+                    Write-Host "Created token: $tokenPath"
+                } else {
+                    Write-Warning "Script execution failed: $scriptPath"
+                }
+            } else {
+                Write-Host "Skipping $scriptPath (already executed)"
+            }
+        } else {
+            Write-Warning "Script not found: $scriptPath"
+        }
+    }
+}
+
+# Initialize conda 
+& "C:\miniconda3\shell\condabin\conda-hook.ps1"
+
+# Function to confirm conda is initialized in the shell:
+function Confirm-CondaInitialized {
+    if (-not (Test-Path $env:CONDA_EXE)) {
+        throw "Conda is not initialized. Please run 'conda init' and try again."
+    }
+}
 
 # Function to run conda commands
 function Invoke-CondaCommand {
     param([string]$Command)
-    & "C:\miniconda3\Scripts\conda.exe" $Command.Split(" ")
-    if ($LASTEXITCODE -ne 0) { throw "Conda command failed: $Command" }
+    Write-Host "Running conda command: $Command"
+    $result = & conda $Command.Split(" ") 2>&1
+    if ($LASTEXITCODE -ne 0) { 
+        Write-Host "Conda command output: $result"
+        throw "Conda command failed: $Command" 
+    }
+    return $result
 }
 
-# Create and activate conda environment
-Set-Location $BUILDROOT
-Invoke-CondaCommand "init powershell"
-& $profile
-Invoke-CondaCommand "create -y -n build conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling"
-Invoke-CondaCommand "activate build"
+# Create a new environment with a unique name
+#$envName = "sisyphus_" + (Get-Random -Minimum 1000 -Maximum 9999)
+$envName = "sisyphus"
 
+# if the environment already exists, activate it
+if (conda info --envs | Select-String -Pattern $envName) {
+    Write-Host "Environment $envName already exists, activating it"
+    Invoke-CondaCommand "activate $envName"
+} else {
+    # Create and activate conda environment
+    Write-Host "Creating and activating $envName environment"
+    Invoke-CondaCommand "create -y -n $envName conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling"
+    Invoke-CondaCommand "activate $envName"
+}
+
+# Verify activation
+$env:CONDA_DEFAULT_ENV
+if ($env:CONDA_DEFAULT_ENV -ne "sisyphus") {
+    throw "Failed to activate 'sisyphus' environment"
+}
+
+Set-Location $BUILDROOT
 # Clone repository and checkout branch
 git clone $Repo
 Set-Location "${Package}-feedstock"

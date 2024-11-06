@@ -37,5 +37,10 @@ packages=$(ls *.tar.bz2 *.conda)
 for package in $packages; do
     echo $package
 done
+
+# Create a tarball of the $BUILDROOT/build-"$PACKAGE"/linux-64/ directory to pull back
+cd $BUILDROOT/build-"$PACKAGE"
+tar czf $BUILDROOT/build-"$PACKAGE"/linux-64-build.tar.gz linux-64
+echo "Build zip created at $BUILDROOT/build-"$PACKAGE"/linux-64-build.tar.gz"
 echo ":::BUILD_COMPLETE:::"
 exit 0
