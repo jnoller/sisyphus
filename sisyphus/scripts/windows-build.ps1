@@ -77,25 +77,20 @@ function Invoke-CondaCommand {
     return $result
 }
 
-# Create a new environment with a unique name
-#$envName = "sisyphus_" + (Get-Random -Minimum 1000 -Maximum 9999)
-$envName = "sisyphus"
+# Find a unique environment name
+do {
+    $envName = "sisyphus_" + (Get-Random -Minimum 1000 -Maximum 9999)
+} until (-not (conda info --envs | Select-String -Pattern $envName))
 
-# if the environment already exists, activate it
-if (conda info --envs | Select-String -Pattern $envName) {
-    Write-Host "Environment $envName already exists, activating it"
-    Invoke-CondaCommand "activate $envName"
-} else {
-    # Create and activate conda environment
-    Write-Host "Creating and activating $envName environment"
-    Invoke-CondaCommand "create -y -n $envName conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling"
-    Invoke-CondaCommand "activate $envName"
-}
+# Create and activate the conda environment
+Write-Host "Creating and activating $envName environment"
+Invoke-CondaCommand "create -y -n $envName conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling"
+Invoke-CondaCommand "activate $envName"
 
 # Verify activation
 $env:CONDA_DEFAULT_ENV
-if ($env:CONDA_DEFAULT_ENV -ne "sisyphus") {
-    throw "Failed to activate 'sisyphus' environment"
+if ($env:CONDA_DEFAULT_ENV -ne $envName) {
+    throw "Failed to create and/or activate $envName environment"
 }
 
 Set-Location $BUILDROOT
