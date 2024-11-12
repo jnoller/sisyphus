@@ -80,20 +80,25 @@ if ($env:CONDA_DEFAULT_ENV -ne $envName) {
     throw "Failed to create and/or activate $envName environment"
 }
 
-Set-Location $BUILDROOT
+$ENVDIR = "$BUILDROOT\$Package\$envName"
+$FEEDSTOCKDIR = "$ENVDIR\feedstock"
+$BUILDDIR = "$ENVDIR\build"
+New-Item -ItemType Directory -Force -Path "$BUILDDIR" | Out-Null
+
 # Clone repository and checkout branch
-git clone $Repo
-Set-Location "${Package}-feedstock"
+git clone $Repo $FEEDSTOCKDIR
+Set-Location $FEEDSTOCKDIR
 git checkout $Branch
 git pull
-Set-Location $BUILDROOT
 
-Write-Host "Building $Package -- logging output to $BUILDROOT\build-$Package\conda-build.log"
+# Set logging
+$buildLog = "$ENVDIR\build.log"
+Write-Host "Building $Package -- logging output to $buildLog"
 
 # Run conda build and log the output
-New-Item -ItemType Directory -Force -Path "$BUILDROOT\build-$Package" | Out-Null
-$buildCommand = "conda build --error-overlinking -c ai-staging --croot=$BUILDROOT\build-$Package\ $BUILDROOT\${Package}-feedstock\"
-$buildLog = "$BUILDROOT\build-$Package\conda-build.log"
+Set-Location $BUILDROOT
+$buildCommand = "conda build --error-overlinking -c ai-staging --croot=$BUILDDIR $FEEDSTOCKDIR"
+Write-Host "Build command: $buildCommand"
 
 try {
     Invoke-Expression $buildCommand *>&1 | Out-File -FilePath $buildLog
@@ -105,7 +110,7 @@ catch {
 }
 
 Write-Host "Build completed"
-Set-Location "$BUILDROOT\build-$Package\win-64\"
+Set-Location "$BUILDDIR\win-64\"
 Invoke-Expression "cph t '*.tar.bz2' .conda"
 $packages = Get-ChildItem -Filter *.tar.bz2,*.conda | Select-Object -ExpandProperty Name
 foreach ($package in $packages) {
