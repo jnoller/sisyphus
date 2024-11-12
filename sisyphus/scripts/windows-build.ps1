@@ -65,18 +65,6 @@ function Confirm-CondaInitialized {
     }
 }
 
-# Function to run conda commands
-function Invoke-CondaCommand {
-    param([string]$Command)
-    Write-Host "Running conda command: $Command"
-    $result = & conda $Command.Split(" ") 2>&1
-    if ($LASTEXITCODE -ne 0) { 
-        Write-Host "Conda command output: $result"
-        throw "Conda command failed: $Command" 
-    }
-    return $result
-}
-
 # Find a unique environment name
 do {
     $envName = "sisyphus_" + (Get-Random -Minimum 1000 -Maximum 9999)
@@ -84,8 +72,14 @@ do {
 
 # Create and activate the conda environment
 Write-Host "Creating and activating $envName environment"
-Invoke-CondaCommand "create -y -n $envName conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling"
-Invoke-CondaCommand "activate $envName"
+conda create -y -n $envName conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed creating environment"
+}
+conda activate $envName
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed activating environment"
+}
 
 # Verify activation
 $env:CONDA_DEFAULT_ENV
