@@ -58,13 +58,6 @@ foreach ($script in $scripts) {
 # Initialize conda 
 & "C:\miniconda3\shell\condabin\conda-hook.ps1"
 
-# Function to confirm conda is initialized in the shell:
-function Confirm-CondaInitialized {
-    if (-not (Test-Path $env:CONDA_EXE)) {
-        throw "Conda is not initialized. Please run 'conda init' and try again."
-    }
-}
-
 # Find a unique environment name
 do {
     $envName = "sisyphus_" + (Get-Random -Minimum 1000 -Maximum 9999)
