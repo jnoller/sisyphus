@@ -72,7 +72,7 @@ def cleanup_sisyphus_containers(connection):
 
 def build_linux(host, package, repo, branch, version, channel, label, local_save_path, conda_build_config_path):
     connection = connect_to_linux(host)
-    
+
     # Cleanup existing sisyphus containers
     cleanup_sisyphus_containers(connection)
 
@@ -82,7 +82,7 @@ def build_linux(host, package, repo, branch, version, channel, label, local_save
     connection.put(conda_build_config_path, f"conda_build_config.yaml")
     connection.put(linux_build_script, f"linux-build.sh")
     connection.run(f"chmod +x linux-build.sh")
-    
+
     # Generate a unique session name and log file name
     session_name = f"sisyphus_{package}_{uuid.uuid4().hex[:8]}"
     # Screen is running on the host, not the container so use the host's path for the log:
@@ -113,11 +113,11 @@ def build_linux(host, package, repo, branch, version, channel, label, local_save
         while True:
             result = connection.run(f"tail -n 1 {log_file}", hide=True)
             #print(result.stdout, end='', flush=True)
-            
+
             if ":::BUILD_COMPLETE:::" in result.stdout:
                 build_completed = True
                 break
-            
+
             time.sleep(5)
     except KeyboardInterrupt:
         print("\nOutput streaming interrupted. Build is still running in the background.")
@@ -127,7 +127,6 @@ def build_linux(host, package, repo, branch, version, channel, label, local_save
 
     if build_completed:
         print("Build completed: copying tarball from host")
-        
 
         linux_save_path = os.path.join(local_save_path, package, version)
         os.makedirs(linux_save_path, exist_ok=True)
@@ -161,24 +160,24 @@ def build_linux(host, package, repo, branch, version, channel, label, local_save
 
 def build_windows(host, package, repo, branch, version, channel, label, local_save_path, conda_build_config_path):
     connection = connect_to_windows(host)
-    
+
     BUILDROOT = 'C:\\sisyphus'
     current_dir = os.path.dirname(os.path.abspath(__file__))
     windows_build_script = os.path.join(current_dir, 'scripts', 'windows-build.ps1')
-    
+
     # Ensure the BUILDROOT directory exists
     connection.run(f"if not exist {BUILDROOT} mkdir {BUILDROOT}", hide=True)
-    
+
     # Copy files to the Windows machine - put uses unix-style paths
     print(f"Copying conda_build_config.yaml to {BUILDROOT}")
     connection.put(conda_build_config_path, f"/sisyphus/conda_build_config.yaml")
     print(f"Copying windows-build.ps1 to {BUILDROOT}")
     connection.put(windows_build_script, f"/sisyphus/windows-build.ps1")
-    
+
     # Generate a unique session name and log file name
     session_name = f"sisyphus_{package}_{uuid.uuid4().hex[:8]}"
     log_file = f"{BUILDROOT}\\build_{session_name}.log"
-    
+
     # Install screen using cygwin
     connection.run(f"C:\\Users\\dev-admin\\setup-x86_64.exe --no-admin -q -P screen")
     # Ensure screen is available
@@ -193,7 +192,7 @@ def build_windows(host, package, repo, branch, version, channel, label, local_sa
     # )
     # connection.run(screen_command)
 
-    # Simple mode - just jump into powershell and call the build script 
+    # Simple mode - just jump into powershell and call the build script
     script_args = f"-Repo {repo} -Package {package} -Branch {branch}"
     connection.run(f"powershell -ExecutionPolicy ByPass -Command \"& {{. C:\\sisyphus\\windows-build.ps1 {script_args}}}")
     # print(f"Build started in screen session '{session_name}'")
@@ -240,7 +239,6 @@ def build_windows(host, package, repo, branch, version, channel, label, local_sa
     # connection.run(f"if exist {BUILDROOT}\\sisbuild-{package} rmdir /s /q {BUILDROOT}\\sisbuild-{package}")
 
 
-
 def get_feedstock(package):
   if package not in FEEDSTOCKS:
     raise click.BadParameter(f"Package {package} is not supported")
@@ -251,7 +249,7 @@ def validate_hosts(ctx, param, value):
     if ctx.params.get('windows_host') is None and ctx.params.get('linux_host') is None:
         # We're not in the complete phase, so don't validate yet
         return value
-    
+
     linux_host = ctx.params.get('linux_host')
     windows_host = ctx.params.get('windows_host')
     if not linux_host and not windows_host:
@@ -273,17 +271,15 @@ def cli():
 @click.option('--windows-host', help='The IP address of the Windows host', callback=validate_hosts)
 @click.option('--local-save-path', required=True, help='The local path to save the packages to')
 def build(package, branch, version, channel, tmp_channel, label, linux_host, windows_host, local_save_path):
-    
+
     feedstock = get_feedstock(package)
     repo = feedstock["repo"]
     branch = branch or feedstock["branch"]
 
-
-
     tmpdir = get_tmpdir()
     conda_build_config_path = get_conda_build_config(tmpdir)
     fix_windows_vs2019(conda_build_config_path)
-    
+
     # Implement the build logic here
     click.echo(f"Building {package} version {version} on branch {branch}")
     click.echo(f"Using channel: {channel}, tmp channel: {tmp_channel}, label: {label}")
@@ -293,7 +289,6 @@ def build(package, branch, version, channel, tmp_channel, label, linux_host, win
         build_linux(linux_host, package, repo, branch, version, channel, label, local_save_path, conda_build_config_path)
     if windows_host:
         build_windows(windows_host, package, repo, branch, version, channel, label, local_save_path, conda_build_config_path)
-
 
 
 @cli.command()
@@ -309,7 +304,7 @@ def upload_win_signed(package, version, channel, label, signed_zip_path, local_s
     click.echo(f"Using channel: {channel}, label: {label}")
     click.echo(f"Signed zip file: {signed_zip_path}")
     click.echo(f"Local save path: {local_save_path}")
-    
+
     # Add the implementation for unpacking and uploading signed Windows packages
 
 if __name__ == '__main__':
