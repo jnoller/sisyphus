@@ -194,7 +194,7 @@ def build_windows(host, package, repo, branch, version, channel, label, local_sa
 
     # Simple mode - just jump into powershell and call the build script
     script_args = f"-Repo {repo} -Package {package} -Branch {branch}"
-    connection.run(f"powershell -ExecutionPolicy ByPass -Command \"& {{. C:\\sisyphus\\windows-build.ps1 {script_args}}}")
+    connection.run(f"powershell -ExecutionPolicy ByPass -Command \"& {{. C:\\sisyphus\\windows-build.ps1 {script_args}}}\"")
     # print(f"Build started in screen session '{session_name}'")
     # print(f"Log file: {log_file}")
     # print(f"To reconnect to the session, use: {screen_path} -r {session_name}")
