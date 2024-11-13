@@ -103,7 +103,7 @@ $buildCommand = "conda build --error-overlinking -c ai-staging --croot=$BUILDDIR
 Write-Host "Build command: $buildCommand"
 
 try {
-    Invoke-Expression $buildCommand *>&1 | Out-File -FilePath $buildLog
+    Invoke-Expression $buildCommand *>&1 | % ToString | Tee-Object -FilePath $buildLog
 }
 catch {
     Write-Host "Build failed. Last 100 lines of the conda build log:"
