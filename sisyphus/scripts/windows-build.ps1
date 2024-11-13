@@ -84,6 +84,8 @@ $ENVDIR = "$BUILDROOT\$Package\$envName"
 $FEEDSTOCKDIR = "$ENVDIR\feedstock"
 $BUILDDIR = "$ENVDIR\build"
 New-Item -ItemType Directory -Force -Path "$BUILDDIR" | Out-Null
+Remove-Item -Path "$BUILDROOT\$Package\latest_is" -ErrorAction SilentlyContinue
+New-Item "$BUILDROOT\$Package\latest_is" -ItemType File -Value "$envName"
 
 # Clone repository and checkout branch
 git clone $Repo $FEEDSTOCKDIR
