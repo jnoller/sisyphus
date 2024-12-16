@@ -21,6 +21,7 @@ Sisyphus automates the build and uploading processes outlined here:
 - [Building GPU packages][2]
 - [Updating the Llama.cpp Conda Package][3]
 
+
 ## Setup & Usage
 
 Sisyphus uses [`conda-project`](https://github.com/conda-incubator/conda-project). You will need to have `conda` and `conda-project` installed.
@@ -50,33 +51,163 @@ cd sisyphus
 conda project activate
 ```
 
-Getting help:
+### Getting help
 ```
-sisyphus --help
-  --package <package-name>             [required] The name of the package to build
-  --branch <branch-name>               [required] The branch of the feedstock recipe to build
-  --version <package-version>          [required] The version of the package to build
-  --channel <anaconda.org-channel>     [required] The channel to upload the packages to
-  --tmp-channel <anaconda.org-channel> [required] The channel to upload the unsigned Windows packages to
-  --label <label>                      [required] The label to apply to the packages
-  --linux-host <ip-address>            [required] The IP address of the Linux host
-  --windows-host <ip-address>          [required] The IP address of the Windows host
-  --local-save-path <path>             [required] The localpath to save the packages to
+> sisyphus --help
+Usage: sisyphus [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -h, --help  Show this message and exit.
+
+Commands:
+  build    Build a package on the host.
+  prepare  Prepare the host for building.
+  upload   Upload build packages to anaconda.org.
+  watch    Watch build in real-time if a package name is passed,...
 ```
 
-Running sisyphus:
+### Preparing the host
+
+The remote host first needs to be prepared to run the builds.
+This means creating a work directory, setting up Conda, and creating a Conda environment.
+On Windows, it also means installing CUDA software and drivers, which takes more time.
+This only needs to be done once.
 
 ```
-sisyphus build --package llama.cpp \
-  --branch main \
-  --version 0.0.3853 \
-  --channel ai-staging \
-  --tmp-channel ai-staging-dev \
-  --label dev \
-  --linux-host="10.1.1.1" \
-  --windows-host="10.1.1.2"
-  --local-save-path="./llama-cpp-builds"
+> sisyphus prepare --help
+Usage: sisyphus prepare [OPTIONS]
+
+  Prepare the host for building.
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host  [required]
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level  [default: info]
+  -h, --help                      Show this message and exit.
 ```
+
+To prepare the host, run:
+
+```
+> sisyphus prepare -H <host>
+```
+
+`<host>` is the IP address or FQDN of your remote host.
+
+Make sure your SSH key is correctly configured.
+Sisyphus will automatically detect if the remote host is Linux or Windows.
+It will immediately disconnect but the preparation will continue on the host.
+This is to avoid the job being interrupted by a network issue, due to a VPN hiccup for example.
+
+Logs for the Conda and, on Windows, both CUDA jobs are saved on the remote host in the work directory.
+On Linux this is at `/tmp/sisyphus`, and on Windows it's at `C:\sisyphus`.
+When `ssh`ing to the host for checking these logs, remember you should login with the `ec2-user` name on Linux and `dev-admin` on Windows.
+
+
+### Watching the preparation progress
+
+```
+> sisyphus watch --help
+Usage: sisyphus watch [OPTIONS]
+
+  Watch build in real-time if a package name is passed, otherwise watch the
+  prepare process. Set exit code on error.
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host  [required]
+  -P, --package TEXT              Name of the package being built
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level  [default: info]
+  -h, --help                      Show this message and exit.
+```
+
+To watch the above preparation process, do:
+
+```
+> sisyphus watch -H <host>
+```
+
+On the default logging level (info), the output will inform in real-time of the status.
+In case of failure, an error exit code will be returned for use in automation, or even a Shell script or one-liner.
+
+
+### Building the package
+
+```
+> sisyphus build --help
+Usage: sisyphus build [OPTIONS]
+
+  Build a package on the host.
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host  [required]
+  -P, --package TEXT              Name of the package to build  [required]
+  -B, --branch TEXT               Branch to build from in the feedstock's
+                                  repository
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level  [default: info]
+  -h, --help                      Show this message and exit.
+```
+
+Start the build with:
+
+```
+> sisyphus build -H <host> -P <package>
+```
+
+`<package>` is the package name as written in the URL for the feedstock.
+For example, if the URL is `https://github.com/AnacondaRecipes/llama.cpp-feedstock`, then `<package>` is `llama.cpp`.
+
+Sisyphus will prepare all the data locally, upload it to the host, start the build, then disconnect.
+
+
+### Watching the build process
+
+It's the same as above for the preparation, except this time we pass the package name.
+
+```
+> sisyphus watch -H <host> -P <package>
+```
+
+On the default logging level sisyphus will show the build output in real-time.
+Here too, an exit code will be returned at the end for use in automation.
+
+
+### Uploading packages to anaconda.org
+
+```
+> sisyphus upload --help
+Usage: python -m sisyphus.main upload [OPTIONS]
+
+  Upload build packages to anaconda.org.
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
+  -P, --package TEXT              Name of the package being built.  [required]
+  -C, --channel TEXT              Target channel on anaconda.org to upload the
+                                  packages.  [required]
+  -T, --token TEXT                Token for the target channel on
+                                  anaconda.org.  [required]
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level.  [default: info]
+  -h, --help                      Show this message and exit.
+```
+
+Upload packages with:
+
+```
+sisyphus upload -H <host> -P <package> -C <channel> -T <token>
+```
+
+> [!IMPORTANT]
+> Windows packages need to be signed first.
+> Upload the packages to a temporary channel, then run the code signing action at
+> https://github.com/anaconda-distribution/rocket-platform/actions/workflows/codesign-windows.yml
+
+
+---
+Below this still needs to be updated
+---
 
 This command does the following:
 - logs in to the dev instances via ssh (`--linux-host` and `--windows-host`)
@@ -108,6 +239,7 @@ sisyphus upload-win-signed --package llama.cpp \
   --signed-zip-path="~/Downloads/signed-packages.zip" \
   --local-save-path="./llama-cpp-builds"
 ```
+
 
 ## Error Handling
 
