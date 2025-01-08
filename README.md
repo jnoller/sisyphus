@@ -1,26 +1,31 @@
-# sisyphus
+# Sisyphus - GPU Package Build Automation Tool
 
 <img src="sisyphus.png" alt="Sisyphus" width="40%" height="40%"/>
 
-Sisyphus automates the manual parts of building GPU (CUDA) enabled packages.
+Sisyphus is a command-line automation tool that streamlines the process of building GPU (CUDA) enabled and other packages across Linux, Windows and other platforms. Sisyphus integrates with Anaconda's existing rocket-platform infrastructure to eliminate manual toil from the GPU package building process.
 
-Sisyphus uses the Fabric python package to run commands on the rocket-platform dev instances and is designed to be run on a Unix-like system (Linux, MacOS).
+Key features:
+- Automated environment and host preparation including CUDA setup.
+- Remote build process management across Linux (x64, aarch64), Windows and other platforms.
+- Real-time build monitoring and logging.
+- Asynchronous operations to protect against local system, network or vpn issues resulting in lost work and time.
+- Automated package upload and distribution handling to specific channels.
+- Seamless integration with existing Anaconda build infrastructure
 
-Sisyphus currently automates the following packages:
+Sisyphus currently supports building the following packages with more planned:
 
 - llama.cpp: CPU, CUDA, and hardware optimized versions
 
-On the following platforms:
+## Prerequisites
 
-- Linux
-- Windows
+To use Sisyphus, you need:
+- Access to rocket-platform dev instances ([documentation][1])
+- Active Anaconda VPN connection
+- Unix-like system (Linux, MacOS) for running the tool
 
-In order to run Sisyphus, you need to have access to the rocket-platform dev instances [outlined here][1] and you **must be on the Anaconda VPN**.
-
-Sisyphus automates the build and uploading processes outlined here:
+Sisyphus automates the build processes documented in:
 - [Building GPU packages][2]
 - [Updating the Llama.cpp Conda Package][3]
-
 
 ## Setup & Usage
 
@@ -30,25 +35,11 @@ Sisyphus uses [`conda-project`](https://github.com/conda-incubator/conda-project
 conda install -c conda-forge conda-project
 ```
 
-You will need to have two API keys from `anaconda.org`, one for the **tmp** channel and one for the **target** channel:
-
-```
-export TMP_CHANNEL_API_KEY=<your-key>
-export TARGET_CHANNEL_API_KEY=<your-key>
-```
-
-Or you can set the environment variables in `.env`:
-
-```
-TMP_CHANNEL_API_KEY=<your-key>
-TARGET_CHANNEL_API_KEY=<your-key>
-```
-
-These variables must be set before running `conda project activate` in the sisyphus directory.
-
+Activating the conda project environment and installing the sisyphus package:
 ```
 cd sisyphus
 conda project activate
+pip install -e . --no-deps
 ```
 
 ### Getting help
@@ -60,10 +51,12 @@ Options:
   -h, --help  Show this message and exit.
 
 Commands:
-  build    Build a package on the host.
-  prepare  Prepare the host for building.
-  upload   Upload build packages to anaconda.org.
-  watch    Watch build in real-time if a package name is passed,...
+  build     Build a package on the host.
+  download  Download built tarballs.
+  log       Print build log to standard output (does not update in real-time).
+  prepare   Prepare the host for building.
+  upload    Upload built packages to anaconda.org.
+  watch     Watch build in real-time if a package name is passed, otherwise watch the prepare process.
 ```
 
 ### Preparing the host
@@ -92,12 +85,13 @@ To prepare the host, run:
 > sisyphus prepare -H <host>
 ```
 
-`<host>` is the IP address or FQDN of your remote host.
+Where `<host>` is the IP address or FQDN of your remote host.
 
-Make sure your SSH key is correctly configured.
-Sisyphus will automatically detect if the remote host is Linux or Windows.
-It will immediately disconnect but the preparation will continue on the host.
-This is to avoid the job being interrupted by a network issue, due to a VPN hiccup for example.
+Remember to make sure your SSH key is correctly configured (see [rocket platform dev instance docs][1]).
+
+Notes:
+- You do not need to define the host type, Sisyphus will automatically detect if the remote host is Linux or Windows.
+- It will immediately disconnect from the host but the preparation will continue on the host asynchronously protecting against local system, network or vpn issues.
 
 Logs for the Conda and, on Windows, both CUDA jobs are saved on the remote host in the work directory.
 On Linux this is at `/tmp/sisyphus`, and on Windows it's at `C:\sisyphus`.
@@ -205,65 +199,8 @@ sisyphus upload -H <host> -P <package> -C <channel> -T <token>
 > https://github.com/anaconda-distribution/rocket-platform/actions/workflows/codesign-windows.yml
 
 
----
-Below this still needs to be updated
----
-
-This command does the following:
-- logs in to the dev instances via ssh (`--linux-host` and `--windows-host`)
-- sets up the hosts for package building
-- checks out the feedstock recipe for the package (`llama.cpp`) at the specified branch (`main`)
-- builds the package (e.g. `conda build --error-overlinking -c ai-staging --croot=./llamabuild/ ./llama.cpp-feedstock/`)
-- transmutes the package to conda format (`cph t "*.tar.bz2" .conda`)
-- downloads the package to the local machine (`--local-save-path`)
-  - Linux packages are saved in the `$LOCAL_SAVE_PATH/$PACKAGE_NAME/$VERSION/linux-64` subdirectory
-  - Windows packages are saved in the `$LOCAL_SAVE_PATH/$PACKAGE_NAME/$VERSION/win-64-unsigned` subdirectory
-- uploads the **unsigned** Windows packages to the temporary channel (`--tmp-channel`)
-- uploads the Linux packages to the anaconda.org channel (`--channel`)
-
-The windows packages must be signed using the rocket-platform [Codesign Windows Package Github Action][4]
-
-Github Action Input:
-- anaconda.org channel to search: `$TMP_CHANNEL/label/$LABEL`
-- SPEC of the package(s) to search for: `$PACKAGE_NAME=$VERSION`
-
-Once you have run the GHA to sign the Windows packages, download the signed packages zip file (`signed-packages.zip`) from the GHA page.
-
-Run the following command to unpack and upload the signed Windows packages:
-
-```
-sisyphus upload-win-signed --package llama.cpp \
-  --version 0.0.3853 \
-  --channel ai-staging \
-  --label dev \
-  --signed-zip-path="~/Downloads/signed-packages.zip" \
-  --local-save-path="./llama-cpp-builds"
-```
-
-
-## Error Handling
-
-Sisyphus uses `screen` to run commands on the dev instances. If a screen session is already running, it will be automatically attached to. If not, a new screen session will be created. This means that if the connection is lost or terminated, the screen session will continue to run on the host.
-
-If you need to connect to the screen session later, you can use the following command:
-
-```
-ssh -A <username>@<ip-address>
-screen -r sisyphus
-```
-
-If a command fails during a sisyphus run, the error will be printed to the screen, and the screen session will remain running so you can investigate the issue.
-
-For example, if the `sisyphus build` command fails during the `conda build` step you can log into the instance to debug the issue with the build:
-
-```
-ssh -A <username>@<ip-address>
-screen -r sisyphus
-```
-
-
-
 [1]: https://github.com/anaconda-distribution/rocket-platform/tree/main/machine-images#dev-instances
 [2]: https://github.com/anaconda-distribution/perseverance-skills/blob/main/sections/02_Package_building/01_How_tos/Building_GPU_packages.md
 [3]: https://anaconda.atlassian.net/wiki/spaces/~7120206a3789e73a844699b3e4eb79b01a8c23/pages/3889627143/Updating+the+Llama.cpp+Conda+Package
 [4]: https://github.com/anaconda-distribution/rocket-platform/actions/workflows/codesign-windows.yml
+
