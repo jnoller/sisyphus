@@ -16,33 +16,54 @@ Sisyphus currently supports building the following packages with more planned:
 
 - llama.cpp: CPU, CUDA, and hardware optimized versions
 
+
 ## Prerequisites
 
 To use Sisyphus, you need:
-- Access to rocket-platform dev instances ([documentation][1])
+- Access to rocket-platform dev instances ([documentation][1], TL:DR: run the [workflow][2], choose `linux-64` or `win-64`, select `g4dn.4xlarge` for the instance type, do not set a CUDA toolkit version)
 - Active Anaconda VPN connection
 - Unix-like system (Linux, MacOS) for running the tool
 
 Sisyphus automates the build processes documented in:
-- [Building GPU packages][2]
-- [Updating the Llama.cpp Conda Package][3]
+- [Building GPU packages][3]
+- [Updating the Llama.cpp Conda Package][4]
+
 
 ## Setup & Usage
 
-Sisyphus uses [`conda-project`](https://github.com/conda-incubator/conda-project). You will need to have `conda` and `conda-project` installed.
+Sisyphus uses [`conda-project`](https://github.com/conda-incubator/conda-project).
+You will need to have `conda` and `conda-project` installed.
 
 ```
 conda install -c conda-forge conda-project
 ```
 
 Activating the conda project environment and installing the sisyphus package:
+
 ```
 cd sisyphus
 conda project activate
 pip install -e . --no-deps
 ```
 
+### TL;DR (full example)
+
+Build `llama.cpp` on host `1.2.3.4`:
+
+```
+sisyphus build -H 1.2.3.4 -P llama.cpp
+```
+
+This will connect to the host, determine if it's Linux or Windows, prepare it to run CUDA builds, prepare the build,
+run it, then show the progress in real-time. When the build completes, you can retrieve the built packages like this:
+
+```
+sisyphus download -H 1.2.3.4 -P llama.cpp
+```
+
+
 ### Getting help
+
 ```
 > sisyphus --help
 Usage: sisyphus [OPTIONS] COMMAND [ARGS]...
@@ -61,9 +82,11 @@ Commands:
 
 ### Preparing the host
 
-The remote host first needs to be prepared to run the builds.
-This means creating a work directory, setting up Conda, and creating a Conda environment.
-On Windows, it also means installing CUDA software and drivers, which takes more time.
+The remote host can optionally be prepared manually to run CUDA builds.
+This is done automatically by the `build` subcommand, so in a normal workflow it isn't needed.
+
+The `prepare` subcommand will create a work directory, set up Conda, and create a Conda environment.
+On Windows, it will also install CUDA software and drivers, which takes more time.
 This only needs to be done once.
 
 ```
@@ -99,6 +122,8 @@ When `ssh`ing to the host for checking these logs, remember you should login wit
 
 
 ### Watching the preparation progress
+
+This command is useful in case you lose the connection to the host during the prepare process (unlikely but not impossible).
 
 ```
 > sisyphus watch --help
@@ -152,10 +177,14 @@ Start the build with:
 `<package>` is the package name as written in the URL for the feedstock.
 For example, if the URL is `https://github.com/AnacondaRecipes/llama.cpp-feedstock`, then `<package>` is `llama.cpp`.
 
-Sisyphus will prepare all the data locally, upload it to the host, start the build, then disconnect.
+Sisyphus will prepare the host to run CUDA builds if needed, prepare all the data locally, upload it to the host, start the build, then show the build process in real-time.
+
+If you lose connection to the host during the build process, which isn't unusual, you can use the `watch` command like bellow to resume watching the build process. Losing the connection will never interrupt builds.
 
 
 ### Watching the build process
+
+This command is useful in case you lose the connection to the host during the build process, which is a common occurrence.
 
 It's the same as above for the preparation, except this time we pass the package name.
 
@@ -167,11 +196,55 @@ On the default logging level sisyphus will show the build output in real-time.
 Here too, an exit code will be returned at the end for use in automation.
 
 
+### Print or download the build log
+
+```
+❯ sisyphus log --help
+Usage: sisyphus log [OPTIONS]
+
+  Print build log to standard output (does not update in real-time).
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
+  -P, --package TEXT              Name of the package being built.  [required]
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level.  [default: info]
+  -h, --help                      Show this message and exit.
+```
+
+This will print the build log in your terminal.
+The output can be piped to a pager like `less` or be redirected to a file to save it.
+
+
+### Download built packages
+
+```
+❯ sisyphus download --help
+Usage: sisyphus download [OPTIONS]
+
+  Download built tarballs.
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
+  -P, --package TEXT              Name of the package being built.  [required]
+  -D, --destination TEXT          Destination directory.
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level.  [default: info]
+  -h, --help                      Show this message and exit.
+```
+
+Download packages with:
+
+```
+sisyphus download -H <host> -P <package>
+```
+
+
 ### Uploading packages to anaconda.org
 
 ```
 > sisyphus upload --help
-Usage: python -m sisyphus.main upload [OPTIONS]
+Usage: sisyphus upload [OPTIONS]
 
   Upload build packages to anaconda.org.
 
@@ -200,7 +273,6 @@ sisyphus upload -H <host> -P <package> -C <channel> -T <token>
 
 
 [1]: https://github.com/anaconda-distribution/rocket-platform/tree/main/machine-images#dev-instances
-[2]: https://github.com/anaconda-distribution/perseverance-skills/blob/main/sections/02_Package_building/01_How_tos/Building_GPU_packages.md
-[3]: https://anaconda.atlassian.net/wiki/spaces/~7120206a3789e73a844699b3e4eb79b01a8c23/pages/3889627143/Updating+the+Llama.cpp+Conda+Package
-[4]: https://github.com/anaconda-distribution/rocket-platform/actions/workflows/codesign-windows.yml
-
+[2]: https://github.com/anaconda-distribution/rocket-platform/actions/workflows/start.yml
+[3]: https://github.com/anaconda-distribution/perseverance-skills/blob/main/sections/02_Package_building/01_How_tos/Building_GPU_packages.md
+[4]: https://anaconda.atlassian.net/wiki/spaces/~7120206a3789e73a844699b3e4eb79b01a8c23/pages/3889627143/Updating+the+Llama.cpp+Conda+Package
