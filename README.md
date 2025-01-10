@@ -227,7 +227,9 @@ Usage: sisyphus download [OPTIONS]
 Options:
   -H, --host TEXT                 IP or FQDN of the build host.  [required]
   -P, --package TEXT              Name of the package being built.  [required]
-  -D, --destination TEXT          Destination directory.
+  -d, --destination TEXT          Destination directory.
+  -a, --all                       Download the whole work directory for
+                                  debugging.
   -l, --log-level [error|warning|info|debug]
                                   Logging level.  [default: info]
   -h, --help                      Show this message and exit.

@@ -344,7 +344,7 @@ class Host:
         print(r)
 
 
-    def download(self, package, destination):
+    def download(self, package, destination, all=False):
         """
         Download build tarballs from the remote host.
         """
@@ -369,37 +369,43 @@ class Host:
         builddir = f"{self.topdir}{self.separator}{package}{self.separator}build"
         if self.type == LINUX_TYPE:
             pkgdir = "linux-64"
+            tf = "/tmp/sisyphus.tar"
         elif self.type == WINDOWS_TYPE:
             pkgdir = "win-64"
+            tf = "\\sisyphus.tar"
+        logging.info("Downloading package tarballs in '%s%s%s'", builddir, self.separator, pkgdir)
+
+        # Create a tarball containing either just packages or the whole build directory
+        if all:
+            self.run(f"cd {self.topdir} && cd .. && tar -cf {tf} sisyphus")
+        else:
+            if self.type == LINUX_TYPE:
+                self.run(f"cd {builddir} && tar -cf {tf} {pkgdir}/*.conda {pkgdir}/*.tar.bz2 2>/dev/null || true")
+            elif self.type == WINDOWS_TYPE:
+                self.run(f'cd {builddir} && tar -cf {tf} $(dir /s {pkgdir}\\*.conda {pkgdir}\\*.tar.bz2 2>nul )', quiet=True)
+
+        # Download and untar it
         dest = os.path.join(destination, package)
         # Create the local destination directory if it doesn't exist
         try:
             os.makedirs(dest)
         except:
             pass
-        # Delete the provous builds for the same package if any
+        # Delete the previous builds for the same package if any
         try:
-            shutil.rmtree(os.path.join(dest, pkgdir))
+            if all:
+                shutil.rmtree(os.path.join(dest, "sisyphus"))
+            else:
+                shutil.rmtree(os.path.join(dest, pkgdir))
         except:
             pass
-        logging.info("Downloading package tarballs in '%s%s%s'", builddir, self.separator, pkgdir)
-
-        # Create a tarball containing only .conda and .bz2 files
-        tf = f"{self.topdir}{self.separator}{package}.tar"
-        if self.type == LINUX_TYPE:
-            self.run(f"cd {builddir} && tar -cf {tf} {pkgdir}/*.conda {pkgdir}/*.tar.bz2 2>/dev/null || true")
-        elif self.type == WINDOWS_TYPE:
-            # Windows needs a different approach since it doesn't support the same tar syntax
-            self.run(f'cd {builddir} && tar -cf {tf} $(dir /s {pkgdir}\\*.conda {pkgdir}\\*.tar.bz2 2>nul)', quiet=True)
-
-        # Download and untar it
         os.chdir(dest)
         self.connection.get(tf.replace("\\", "/"))
-        with tarfile.open(f"{package}.tar", "r") as tar:
+        with tarfile.open("sisyphus.tar", "r") as tar:
             tar.extractall()
 
         # Cleanup
-        os.remove(f"{package}.tar")
+        os.remove("sisyphus.tar")
         self.rm(tf)
 
         if failed:
