@@ -382,16 +382,15 @@ class Host:
             shutil.rmtree(os.path.join(dest, pkgdir))
         except:
             pass
-        logging.info("Dowloading package tarballs in '%s%s%s'", builddir, self.separator, pkgdir)
+        logging.info("Downloading package tarballs in '%s%s%s'", builddir, self.separator, pkgdir)
 
-        # Remove unneeded files
-        # for file in self.ls(f"{builddir}{self.separator}{pkgdir}"):
-        #     if not file.endswith(".tar.bz2") and not file.endswith(".conda"):
-        #         self.rm(f"{builddir}{self.separator}{pkgdir}{self.separator}{file}")
-
-        # Create a tarball of tarballs, again because fabric can't recurse
+        # Create a tarball containing only .conda and .bz2 files
         tf = f"{self.topdir}{self.separator}{package}.tar"
-        r = self.run(f"tar -c -f {tf} -C {builddir} {pkgdir}")
+        if self.type == LINUX_TYPE:
+            self.run(f"cd {builddir} && tar -cf {tf} {pkgdir}/*.conda {pkgdir}/*.tar.bz2 2>/dev/null || true")
+        elif self.type == WINDOWS_TYPE:
+            # Windows needs a different approach since it doesn't support the same tar syntax
+            self.run(f'cd {builddir} && tar -cf {tf} $(dir /s {pkgdir}\\*.conda {pkgdir}\\*.tar.bz2 2>nul)', quiet=True)
 
         # Download and untar it
         os.chdir(dest)
