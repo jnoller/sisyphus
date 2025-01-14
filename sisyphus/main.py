@@ -150,10 +150,11 @@ def log(host, package, log_level):
 @cli.command(context_settings=HELP_CONTEXT)
 @click.option("-H", "--host", required=True, help="IP or FQDN of the build host.")
 @click.option("-P", "--package", required=True, help="Name of the package being built.")
-@click.option("-D", "--destination", help="Destination directory.")
+@click.option("-d", "--destination", help="Destination directory.")
+@click.option("-a", "--all", is_flag=True, help="Download the whole work directory for debugging.")
 @click.option("-l", "--log-level", type=click.Choice(["error", "warning", "info", "debug"], case_sensitive=False),
               default="info", show_default=True, help="Logging level.")
-def download(host, package, destination, log_level):
+def download(host, package, destination, all, log_level):
     """
     Download built tarballs.
     """
@@ -164,7 +165,7 @@ def download(host, package, destination, log_level):
         destination = os.getcwd()
 
     h = Host(host)
-    h.download(package, destination)
+    h.download(package, destination, all)
 
 
 if __name__ == "__main__":
