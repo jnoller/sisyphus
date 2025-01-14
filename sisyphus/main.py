@@ -61,9 +61,10 @@ def prepare(host, log_level):
 @click.option("-H", "--host", required=True, help="IP or FQDN of the build host.")
 @click.option("-P", "--package", required=True, help="Name of the package to build.")
 @click.option("-B", "--branch", help="Branch to build from in the feedstock's repository.")
+@click.option("--no-watch", is_flag=True, default=False, help="Don't watch the build process after it starts.")
 @click.option("-l", "--log-level", type=click.Choice(["error", "warning", "info", "debug"], case_sensitive=False),
               default="info", show_default=True, help="Logging level.")
-def build(package, branch, host, log_level):
+def build(package, branch, host, no_watch, log_level):
     """
     Build a package on the host.
     """
@@ -92,8 +93,9 @@ def build(package, branch, host, log_level):
     # Create a build directory, and build the package
     h.build(workdir)
 
-    # Start watching the build process
-    h.watch_build(workdir)
+    # Start watching the build process if not disabled
+    if not no_watch:
+        h.watch_build(workdir)
 
 
 @cli.command(context_settings=HELP_CONTEXT)

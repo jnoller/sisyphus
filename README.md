@@ -163,6 +163,7 @@ Options:
   -P, --package TEXT              Name of the package to build  [required]
   -B, --branch TEXT               Branch to build from in the feedstock's
                                   repository
+  --no-watch                      Don't watch the build process after it starts
   -l, --log-level [error|warning|info|debug]
                                   Logging level  [default: info]
   -h, --help                      Show this message and exit.
@@ -177,7 +178,7 @@ Start the build with:
 `<package>` is the package name as written in the URL for the feedstock.
 For example, if the URL is `https://github.com/AnacondaRecipes/llama.cpp-feedstock`, then `<package>` is `llama.cpp`.
 
-Sisyphus will prepare the host to run CUDA builds if needed, prepare all the data locally, upload it to the host, start the build, then show the build process in real-time.
+Sisyphus will prepare the host to run CUDA builds if needed, prepare all the data locally, upload it to the host, start the build, then show the build process in real-time (unless `--no-watch` is specified).
 
 If you lose connection to the host during the build process, which isn't unusual, you can use the `watch` command like bellow to resume watching the build process. Losing the connection will never interrupt builds.
 
