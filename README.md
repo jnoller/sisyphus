@@ -83,9 +83,9 @@ Commands:
 ### Preparing the host
 
 The remote host can optionally be prepared manually to run CUDA builds.
-This is done automatically by the `build` subcommand, so in a normal workflow it isn't needed.
+This is done automatically by the `build` command, so in a normal workflow it isn't needed.
 
-The `prepare` subcommand will create a work directory, set up Conda, and create a Conda environment.
+The `prepare` command will create a work directory, set up Conda, and create a Conda environment.
 On Windows, it will also install CUDA software and drivers, which takes more time.
 This only needs to be done once.
 
@@ -180,7 +180,7 @@ For example, if the URL is `https://github.com/AnacondaRecipes/llama.cpp-feedsto
 
 Sisyphus will prepare the host to run CUDA builds if needed, prepare all the data locally, upload it to the host, start the build, then show the build process in real-time (unless `--no-watch` is specified).
 
-If you lose connection to the host during the build process, which isn't unusual, you can use the `watch` command like bellow to resume watching the build process. Losing the connection will never interrupt builds.
+If you lose connection to the host during the build process, which isn't unusual, you can use the `watch` command like below to resume watching the build process. Losing the connection will never interrupt builds.
 
 
 ### Watching the build process
@@ -197,6 +197,51 @@ On the default logging level sisyphus will show the build output in real-time.
 Here too, an exit code will be returned at the end for use in automation.
 
 
+### Check build status
+
+```
+> sisyphus status --help
+Usage: sisyphus status [OPTIONS]
+
+  Print the build status.
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
+  -P, --package TEXT              Name of the package being built.  [required]
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level.  [default: info]
+  -h, --help                      Show this message and exit.
+```
+
+This will print one of the following statuses:
+- `Not started`: The build hasn't started yet
+- `Building`: The build is currently running
+- `Complete`: The build finished successfully
+- `Failed`: The build failed
+
+The command returns immediately without waiting for the build to finish.
+
+
+### Wait for build completion
+
+```
+> sisyphus wait --help
+Usage: sisyphus wait [OPTIONS]
+
+  Wait for the build to finish and set exit code based on result.
+
+Options:
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
+  -P, --package TEXT              Name of the package being built.  [required]
+  -l, --log-level [error|warning|info|debug]
+                                  Logging level.  [default: info]
+  -h, --help                      Show this message and exit.
+```
+
+This command will wait for the build to finish and return an exit code of 0 if the build succeeded, or 1 if it failed.
+This is useful for automation and scripting.
+
+
 ### Print or download the build log
 
 ```
@@ -208,12 +253,13 @@ Usage: sisyphus log [OPTIONS]
 Options:
   -H, --host TEXT                 IP or FQDN of the build host.  [required]
   -P, --package TEXT              Name of the package being built.  [required]
+  --no-wait                       Don't wait for the build to finish before printing the log.
   -l, --log-level [error|warning|info|debug]
                                   Logging level.  [default: info]
   -h, --help                      Show this message and exit.
 ```
 
-This will print the build log in your terminal.
+This will print the build log in your terminal. By default, it will wait for the build to finish before printing the log, unless `--no-wait` is specified.
 The output can be piped to a pager like `less` or be redirected to a file to save it.
 
 
@@ -223,7 +269,7 @@ The output can be piped to a pager like `less` or be redirected to a file to sav
 ❯ sisyphus download --help
 Usage: sisyphus download [OPTIONS]
 
-  Download built tarballs.
+  Download built packages from the remote host.
 
 Options:
   -H, --host TEXT                 IP or FQDN of the build host.  [required]
@@ -249,7 +295,7 @@ sisyphus download -H <host> -P <package>
 > sisyphus upload --help
 Usage: sisyphus upload [OPTIONS]
 
-  Upload build packages to anaconda.org.
+  Upload built packages on the remote host to anaconda.org.
 
 Options:
   -H, --host TEXT                 IP or FQDN of the build host.  [required]

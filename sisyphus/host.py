@@ -332,15 +332,52 @@ class Host:
         logging.info("Done")
 
 
-    def log(self, package):
+    def status(self, package):
         """
-        Watch the build if a package name is passed, otherwise watch the prepare process.
+        Print the build status.
         """
+        if self.exists(f"{self.topdir}{self.separator}{package}{self.separator}build.ready"):
+            return "Complete"
+        if self.exists(f"{self.topdir}{self.separator}{package}{self.separator}build.failed"):
+            return "Failed"
+        if self.exists(f"{self.topdir}{self.separator}{package}{self.separator}build.log"):
+            return "Building"
+        return "Not started"
+
+
+    def wait(self, package):
+        """
+        Download build tarballs from the remote host.
+        """
+        wait = 60
+        while True:
+            if self.exists(f"{self.topdir}{self.separator}{package}{self.separator}build.ready"):
+                logging.info("Build complete")
+                return True
+            if self.exists(f"{self.topdir}{self.separator}{package}{self.separator}build.failed"):
+                logging.info("Build failed")
+                return False
+            logging.info("Waiting for the build to finish")
+            # Close the connection because over a very long time it can silently die
+            self.connection.close()
+            time.sleep(wait)
+            # Re-open the connection
+            self.connection = fabric.Connection(user=self.user, connect_timeout=10, host=self.host)
+
+
+    def log(self, package, no_wait=False):
+        """
+        Print the build log to standard output.
+        """
+        # Wait for the build to finish unless no_wait is specified
+        if not no_wait:
+            self.wait(package)
+
         logfile = f"{self.topdir}{self.separator}{package}{self.separator}build.log"
         if self.type == LINUX_TYPE:
-            cat= "cat"
+            cat = "cat"
         elif self.type == WINDOWS_TYPE:
-            cat= "type"
+            cat = "type"
         r = self.run(f"{cat} {logfile}")
         print(r)
 
@@ -350,22 +387,7 @@ class Host:
         Download build tarballs from the remote host.
         """
         # Wait for the build to finish
-        wait = 60
-        failed = False
-        while True:
-            if self.exists(f"{self.topdir}{self.separator}{package}{self.separator}build.ready"):
-                logging.info("Build complete")
-                break
-            if self.exists(f"{self.topdir}{self.separator}{package}{self.separator}build.failed"):
-                logging.info("Build Failed")
-                failed = True
-                break
-            logging.info("Waiting for the build to finish")
-            # Close the connection because over a very long time it can silently die
-            self.connection.close()
-            time.sleep(wait)
-            # Re-open the connection
-            self.connection = fabric.Connection(user=self.user, connect_timeout=10, host=self.host)
+        self.wait(package)
 
         # Transmute packages if needed
         self.transmute(package)
@@ -412,8 +434,6 @@ class Host:
         os.remove("sisyphus.tar")
         self.rm(tf)
 
-        if failed:
-            logging.warning("Packages downloaded but the build failed")
         logging.info("Done")
 
 
