@@ -73,10 +73,13 @@ Options:
 
 Commands:
   build     Build a package on the host.
-  download  Download built tarballs.
+  download  Download built packages from the remote host.
   log       Print build log to standard output (does not update in real-time).
   prepare   Prepare the host for building.
-  upload    Upload built packages to anaconda.org.
+  status    Print the build status.
+  transmute Transmute .tar.bz2 packages to .conda packages.
+  upload    Upload built packages on the remote host to anaconda.org.
+  wait      Wait for the build to finish and set exit code based on result.
   watch     Watch build in real-time if a package name is passed, otherwise watch the prepare process.
 ```
 
@@ -96,9 +99,9 @@ Usage: sisyphus prepare [OPTIONS]
   Prepare the host for building.
 
 Options:
-  -H, --host TEXT                 IP or FQDN of the build host  [required]
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
   -l, --log-level [error|warning|info|debug]
-                                  Logging level  [default: info]
+                                  Logging level.  [default: info]
   -h, --help                      Show this message and exit.
 ```
 
@@ -133,10 +136,10 @@ Usage: sisyphus watch [OPTIONS]
   prepare process. Set exit code on error.
 
 Options:
-  -H, --host TEXT                 IP or FQDN of the build host  [required]
-  -P, --package TEXT              Name of the package being built
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
+  -P, --package TEXT              Name of the package being built.
   -l, --log-level [error|warning|info|debug]
-                                  Logging level  [default: info]
+                                  Logging level.  [default: info]
   -h, --help                      Show this message and exit.
 ```
 
@@ -159,13 +162,13 @@ Usage: sisyphus build [OPTIONS]
   Build a package on the host.
 
 Options:
-  -H, --host TEXT                 IP or FQDN of the build host  [required]
-  -P, --package TEXT              Name of the package to build  [required]
+  -H, --host TEXT                 IP or FQDN of the build host.  [required]
+  -P, --package TEXT              Name of the package to build.  [required]
   -B, --branch TEXT               Branch to build from in the feedstock's
-                                  repository
-  --no-watch                      Don't watch the build process after it starts
+                                  repository.
+  --no-watch                      Don't watch the build process after it starts.
   -l, --log-level [error|warning|info|debug]
-                                  Logging level  [default: info]
+                                  Logging level.  [default: info]
   -h, --help                      Show this message and exit.
 ```
 
@@ -245,7 +248,7 @@ This is useful for automation and scripting.
 ### Print or download the build log
 
 ```
-❯ sisyphus log --help
+> sisyphus log --help
 Usage: sisyphus log [OPTIONS]
 
   Print build log to standard output (does not update in real-time).
@@ -266,7 +269,7 @@ The output can be piped to a pager like `less` or be redirected to a file to sav
 ### Download built packages
 
 ```
-❯ sisyphus download --help
+> sisyphus download --help
 Usage: sisyphus download [OPTIONS]
 
   Download built packages from the remote host.
@@ -275,8 +278,7 @@ Options:
   -H, --host TEXT                 IP or FQDN of the build host.  [required]
   -P, --package TEXT              Name of the package being built.  [required]
   -d, --destination TEXT          Destination directory.
-  -a, --all                       Download the whole work directory for
-                                  debugging.
+  -a, --all                       Download the whole work directory for debugging.
   -l, --log-level [error|warning|info|debug]
                                   Logging level.  [default: info]
   -h, --help                      Show this message and exit.
