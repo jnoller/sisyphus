@@ -79,8 +79,8 @@ def build(package, branch, host, no_watch, log_level):
     # Prepare and upload the data to the host
     b = Build(package, branch)
     b.upload_data(h)
-    workdir = h.topdir + h.separator + package
-    tarfile = h.topdir + h.separator + b.tarfile
+    workdir = h.path(package)
+    tarfile = h.path(b.tarfile)
     # Start from a blank slate, untar the data and cleanup
     h.rm(workdir)
     h.untar(tarfile, workdir)
@@ -112,7 +112,7 @@ def watch(host, package, log_level):
 
     h = Host(host)
     if package:
-        h.watch_build(h.topdir + h.separator + package)
+        h.watch_build(h.path(package))
     else:
         h.watch_prepare()
 
