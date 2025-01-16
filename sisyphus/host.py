@@ -1,6 +1,5 @@
 import fabric
 import logging
-import paramiko
 import os
 import re
 import shutil
@@ -45,7 +44,7 @@ class Host:
         else:
             logging.error("Couldn't connect to host '%s' or figure out what type it is", self.host)
             raise SystemExit(1)
-        self.sisyphus_dir = self.topdir + self.separator + "sisyphus"
+        self.sisyphus_dir = self.path_join(self.topdir, "sisyphus")
         self.mkdir(self.sisyphus_dir)
 
 
@@ -71,14 +70,21 @@ class Host:
         """
         Join paths with the host separator.
         """
-        return self.separator.join(list(paths))
+        path = self.separator.join(list(paths))
+        # We need to deduplicate separators but, sadly, re.sub doesn't work here (because, you guessed it, Windows)
+        cleaned_path = ""
+        for c in path:
+            if len(cleaned_path) > 0 and c == self.separator and cleaned_path[-1] == self.separator:
+                continue
+            cleaned_path += c
+        return cleaned_path
 
 
     def path(self, *paths):
         """
         Build a path on the host from the Sisyphus directory and the given paths.
         """
-        return self.separator.join([self.sisyphus_dir] + list(paths))
+        return self.path_join(self.sisyphus_dir, *paths)
 
 
     def run(self, cmd, quiet=False):
@@ -349,11 +355,12 @@ class Host:
         """
         Print the build status.
         """
-        if self.exists(self.path(package, "build.ready")):
+        files = self.ls(self.path(package))
+        if "build.ready" in files:
             return "Complete"
-        if self.exists(self.path(package, "build.failed")):
+        if "build.failed" in files:
             return "Failed"
-        if self.exists(self.path(package, "build.log")):
+        if "build.log" in files:
             return "Building"
         return "Not started"
 
@@ -364,13 +371,17 @@ class Host:
         """
         wait = 60
         while True:
-            if self.exists(self.path(package, "build.ready")):
+            status = self.status(package)
+            if status == "Complete":
                 logging.info("Build complete")
                 return True
-            if self.exists(self.path(package, "build.failed")):
-                logging.info("Build failed")
+            if status == "Failed":
+                logging.error("Build failed")
                 return False
-            logging.info("Waiting for the build to finish")
+            if status == "Not started":
+                logging.info("Waiting for build to start")
+            else:
+                logging.info("Waiting for the build to finish")
             # Close the connection because over a very long time it can silently die
             self.connection.close()
             time.sleep(wait)
