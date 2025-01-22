@@ -441,7 +441,7 @@ class Host:
             if all:
                 shutil.rmtree(os.path.join(dest, "sisyphus"))
             else:
-                shutil.rmtree(os.path.join(dest, pkgdir))
+                shutil.rmtree(os.path.join(dest, self.pkgdir))
         except:
             pass
         os.chdir(dest)
@@ -461,10 +461,19 @@ class Host:
         Transmute .tar.bz2 packages to .conda packages.
         """
         pkgdir = self.path(package, "build", self.pkgdir)
-        bz2 = [p for p in self.ls(pkgdir) if p.endswith(".tar.bz2")]
-        for pkg in bz2:
-            if self.exists(re.sub("tar.bz2", "conda", self.path_join(pkgdir, pkg))):
-                logging.info("%s already transmuted", pkg)
+        bz2_pkgs = [p for p in self.ls(pkgdir) if p.endswith(".tar.bz2")]
+        conda_pkgs = [p for p in self.ls(pkgdir) if p.endswith(".conda")]
+        for bz2_pkg in bz2_pkgs:
+            conda_pkg = re.sub("tar.bz2$", "conda", bz2_pkg)
+            if self.exists(self.path_join(pkgdir, conda_pkg)):
+                logging.info("%s already exists", conda_pkg)
             else:
-                logging.info("Transmuting %s", pkg)
-                self.run(f"{ACTIVATE} cd {pkgdir} && cph t {pkg} .conda")
+                logging.info("Transmuting %s to .conda", bz2_pkg)
+                self.run(f"{ACTIVATE} cd {pkgdir} && cph t {bz2_pkg} .conda")
+        for conda_pkg in conda_pkgs:
+            bz2_pkg = re.sub("conda$", "tar.bz2", conda_pkg)
+            if self.exists(self.path_join(pkgdir, bz2_pkg)):
+                logging.info("%s already exists", bz2_pkg)
+            else:
+                logging.info("Transmuting %s to .tar.bz2", conda_pkg)
+                self.run(f"{ACTIVATE} cd {pkgdir} && cph t {conda_pkg} .tar.bz2")
