@@ -31,20 +31,15 @@ Sisyphus automates the build processes documented in:
 
 ## Setup & Usage
 
-Sisyphus uses [`conda-project`](https://github.com/conda-incubator/conda-project).
-You will need to have `conda` and `conda-project` installed.
+You will need to have `conda`.
 
 ```
-conda install -c conda-forge conda-project
-```
-
-Activating the conda project environment and installing the sisyphus package:
-
-```
+conda create -n sisyphus -c conda-forge python click fabric requests
+conda activate sisyphus
 cd sisyphus
-conda project activate
 pip install -e . --no-deps
 ```
+
 
 ### TL;DR (full example)
 
