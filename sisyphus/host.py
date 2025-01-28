@@ -447,15 +447,8 @@ class Host:
             
             # Verify the tar file was created
             try:
-                if self.type == WINDOWS_TYPE:
-                    size_check = self.run(f'cd {builddir} && dir "{tf}"')
-                else:
-                    # Linux uses -c format, macOS uses -f format
-                    size_check = self.run(f'stat -c%s "{tf}"')
-                
-                if not size_check:
+                if not self.exists(tf):
                     raise Exception(f"Tar file is missing")
-                    
             except Exception as e:
                 raise Exception(f"Failed to verify tar file: {str(e)}")
                 
