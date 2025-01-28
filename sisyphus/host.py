@@ -429,21 +429,21 @@ class Host:
         # Create a tarball containing either just packages or the whole build directory
         try:
             if all:
-                result = self.run(f"cd {self.sisyphus_dir} && cd .. && tar -cf {tf} sisyphus")
+                self.run(f"cd {self.sisyphus_dir} && cd .. && tar -cf {tf} sisyphus")
             else:
                 if self.type == LINUX_TYPE:
-                    result = self.run(f"cd {builddir} && tar -cf {tf} {self.pkgdir}/*.conda {self.pkgdir}/*.tar.bz2 2>/dev/null || true")
+                    self.run(f"cd {builddir} && tar -cf {tf} {self.pkgdir}/*.conda {self.pkgdir}/*.tar.bz2 2>/dev/null || true")
                 elif self.type == WINDOWS_TYPE:
                     # First get the list of files - make sure we're in builddir first
                     files = self.run(f'cd {builddir} && dir /b /s {self.pkgdir}\\*.conda {self.pkgdir}\\*.tar.bz2 2>nul', quiet=True)
                     
                     if not files:
                         logging.warning("No package files found to tar")
-                        result = self.run(f'cd {builddir} && tar -cf "{tf}" --files-from NUL', quiet=True)
+                        self.run(f'cd {builddir} && tar -cf "{tf}" --files-from NUL', quiet=True)
                     else:
                         # Create file list - strip builddir prefix since we'll cd there
                         file_list = " ".join(f'"{f.replace(builddir + "\\", "")}"' for f in files.splitlines())
-                        result = self.run(f'cd {builddir} && tar -cf "{tf}" {file_list}', quiet=True)
+                        self.run(f'cd {builddir} && tar -cf "{tf}" {file_list}', quiet=True)
             
             # Verify the tar file was created
             try:
