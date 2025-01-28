@@ -417,17 +417,51 @@ class Host:
         self.transmute(package)
 
         builddir = self.path(package, "build")
-        tf = self.topdir + self.separator + "sisyphus.tar"
+        # Modify how we construct the temporary tar file path
+        if self.type == WINDOWS_TYPE:
+            # Use the build directory instead of C: root
+            tf = self.path_join(builddir, "sisyphus.tar")
+        else:
+            tf = self.topdir + self.separator + "sisyphus.tar"
+            
         logging.info("Downloading package tarballs in '%s%s%s'", builddir, self.separator, self.pkgdir)
 
         # Create a tarball containing either just packages or the whole build directory
-        if all:
-            self.run(f"cd {self.sisyphus_dir} && cd .. && tar -cf {tf} sisyphus")
-        else:
-            if self.type == LINUX_TYPE:
-                self.run(f"cd {builddir} && tar -cf {tf} {self.pkgdir}/*.conda {self.pkgdir}/*.tar.bz2 2>/dev/null || true")
-            elif self.type == WINDOWS_TYPE:
-                self.run(f'cd {builddir} && tar -cf {tf} $(dir /s {self.pkgdir}\\*.conda {self.pkgdir}\\*.tar.bz2 2>nul )', quiet=True)
+        try:
+            if all:
+                result = self.run(f"cd {self.sisyphus_dir} && cd .. && tar -cf {tf} sisyphus")
+            else:
+                if self.type == LINUX_TYPE:
+                    result = self.run(f"cd {builddir} && tar -cf {tf} {self.pkgdir}/*.conda {self.pkgdir}/*.tar.bz2 2>/dev/null || true")
+                elif self.type == WINDOWS_TYPE:
+                    # First get the list of files - make sure we're in builddir first
+                    files = self.run(f'cd {builddir} && dir /b /s {self.pkgdir}\\*.conda {self.pkgdir}\\*.tar.bz2 2>nul', quiet=True)
+                    
+                    if not files:
+                        logging.warning("No package files found to tar")
+                        result = self.run(f'cd {builddir} && tar -cf "{tf}" --files-from NUL', quiet=True)
+                    else:
+                        # Create file list - strip builddir prefix since we'll cd there
+                        file_list = " ".join(f'"{f.replace(builddir + "\\", "")}"' for f in files.splitlines())
+                        result = self.run(f'cd {builddir} && tar -cf "{tf}" {file_list}', quiet=True)
+            
+            # Verify the tar file was created
+            try:
+                if self.type == WINDOWS_TYPE:
+                    size_check = self.run(f'cd {builddir} && dir "{tf}"')
+                else:
+                    # Linux uses -c format, macOS uses -f format
+                    size_check = self.run(f'stat -c%s "{tf}"')
+                
+                if not size_check:
+                    raise Exception(f"Tar file is missing")
+                    
+            except Exception as e:
+                raise Exception(f"Failed to verify tar file: {str(e)}")
+                
+        except Exception as e:
+            logging.error(f"Failed to create tar file: {str(e)}")
+            raise
 
         # Download and untar it
         dest = os.path.join(destination, package)
@@ -445,7 +479,24 @@ class Host:
         except:
             pass
         os.chdir(dest)
-        self.connection.get(tf.replace("\\", "/"))
+        
+        # Ensure proper path format for SFTP
+        remote_path = tf.replace("\\", "/")
+        if remote_path.startswith("//"):
+            remote_path = remote_path[1:]  # Remove one leading slash if there are two
+        
+        logging.debug(f"Attempting to download from remote path: {remote_path}")
+        try:
+            # Check if file exists by trying to stat it
+            try:
+                self.connection.sftp().stat(remote_path)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Remote file not found: {remote_path}")
+            
+            self.connection.get(remote_path)
+        except Exception as e:
+            logging.error(f"Download failed for {remote_path}: {str(e)}")
+            raise
         with tarfile.open("sisyphus.tar", "r") as tar:
             tar.extractall()
 
