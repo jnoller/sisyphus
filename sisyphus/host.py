@@ -423,7 +423,7 @@ class Host:
             tf = self.path_join(builddir, "sisyphus.tar")
         else:
             tf = self.topdir + self.separator + "sisyphus.tar"
-            
+
         logging.info("Downloading package tarballs in '%s%s%s'", builddir, self.separator, self.pkgdir)
 
         # Create a tarball containing either just packages or the whole build directory
@@ -436,7 +436,7 @@ class Host:
                 elif self.type == WINDOWS_TYPE:
                     # First get the list of files - make sure we're in builddir first
                     files = self.run(f'cd {builddir} && dir /b /s {self.pkgdir}\\*.conda {self.pkgdir}\\*.tar.bz2 2>nul', quiet=True)
-                    
+
                     if not files:
                         logging.warning("No package files found to tar")
                         self.run(f'cd {builddir} && tar -cf "{tf}" --files-from NUL', quiet=True)
@@ -444,14 +444,14 @@ class Host:
                         # Create file list - strip builddir prefix since we'll cd there
                         file_list = " ".join(f'"{f.replace(builddir + "\\", "")}"' for f in files.splitlines())
                         self.run(f'cd {builddir} && tar -cf "{tf}" {file_list}', quiet=True)
-            
+
             # Verify the tar file was created
             try:
                 if not self.exists(tf):
                     raise Exception(f"Tar file is missing")
             except Exception as e:
                 raise Exception(f"Failed to verify tar file: {str(e)}")
-                
+
         except Exception as e:
             logging.error(f"Failed to create tar file: {str(e)}")
             raise
@@ -472,12 +472,12 @@ class Host:
         except:
             pass
         os.chdir(dest)
-        
+
         # Ensure proper path format for SFTP
         remote_path = tf.replace("\\", "/")
         if remote_path.startswith("//"):
             remote_path = remote_path[1:]  # Remove one leading slash if there are two
-        
+
         logging.debug(f"Attempting to download from remote path: {remote_path}")
         try:
             # Check if file exists by trying to stat it
@@ -485,7 +485,7 @@ class Host:
                 self.connection.sftp().stat(remote_path)
             except FileNotFoundError:
                 raise FileNotFoundError(f"Remote file not found: {remote_path}")
-            
+
             self.connection.get(remote_path)
         except Exception as e:
             logging.error(f"Download failed for {remote_path}: {str(e)}")
