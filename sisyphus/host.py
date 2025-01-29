@@ -11,8 +11,8 @@ LINUX_TYPE = "linux"
 WINDOWS_TYPE = "windows"
 LINUX_USER = "ec2-user"
 WINDOWS_USER = "dev-admin"
-LINUX_TOPDIR = "/tmp"
-WINDOWS_TOPDIR = "\\"
+LINUX_TOPDIR = "/tmp"       # These two have to be a directory,
+WINDOWS_TOPDIR = "\\tmp"    # not the root of a device like / or \\
 CONDA_PACKAGES = "conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling"
 BUILD_OPTIONS = "--error-overlinking -c ai-staging"
 ACTIVATE = "conda activate sisyphus &&"
@@ -416,45 +416,38 @@ class Host:
         # Transmute packages if needed
         self.transmute(package)
 
+        # Check whether there are packaes to download, if not bail out
         builddir = self.path(package, "build")
-        # Modify how we construct the temporary tar file path
-        if self.type == WINDOWS_TYPE:
-            # Use the build directory instead of C: root
-            tf = self.path_join(builddir, "sisyphus.tar")
-        else:
-            tf = self.topdir + self.separator + "sisyphus.tar"
+        pkgdir = self.path_join(builddir, self.pkgdir)
+        files = [self.path_join(self.pkgdir, f) for f in self.ls(pkgdir) if f.endswith('.tar.bz2') or f.endswith('.conda')]
+        if not files:
+            logging.warning("No packages to download")
+            return
 
-        logging.info("Downloading package tarballs in '%s%s%s'", builddir, self.separator, self.pkgdir)
+        tf_name = f"sisyphus_{package}_{self.type}.tar"
+        tf = self.path_join(self.topdir, tf_name)
+
 
         # Create a tarball containing either just packages or the whole build directory
         try:
             if all:
-                self.run(f"cd {self.sisyphus_dir} && cd .. && tar -cf {tf} sisyphus")
+                logging.info("Downloading complete Sisyphus data at '%s'", self.sisyphus_dir)
+                self.run(f"cd {self.topdir} && tar -cf {tf} sisyphus")
             else:
+                logging.info("Downloading %d package tarballs in '%s'", len(files), pkgdir)
                 if self.type == LINUX_TYPE:
-                    self.run(f"cd {builddir} && tar -cf {tf} {self.pkgdir}/*.conda {self.pkgdir}/*.tar.bz2 2>/dev/null || true")
+                    self.run(f"cd {builddir} && tar -cf {tf} {" ".join(files)} 2>/dev/null || true")
                 elif self.type == WINDOWS_TYPE:
-                    # First get the list of files - make sure we're in builddir first
-                    files = self.run(f'cd {builddir} && dir /b /s {self.pkgdir}\\*.conda {self.pkgdir}\\*.tar.bz2 2>nul', quiet=True)
-
-                    if not files:
-                        logging.warning("No package files found to tar")
-                        self.run(f'cd {builddir} && tar -cf "{tf}" --files-from NUL', quiet=True)
-                    else:
-                        # Create file list - strip builddir prefix since we'll cd there
-                        file_list = " ".join(f'"{f.replace(builddir + "\\", "")}"' for f in files.splitlines())
-                        self.run(f'cd {builddir} && tar -cf "{tf}" {file_list}', quiet=True)
-
-            # Verify the tar file was created
-            try:
-                if not self.exists(tf):
-                    raise Exception(f"Tar file is missing")
-            except Exception as e:
-                raise Exception(f"Failed to verify tar file: {str(e)}")
+                    self.run(f'cd {builddir} && tar -cf {tf} {" ".join(files)} 2>nul )', quiet=True)
 
         except Exception as e:
             logging.error(f"Failed to create tar file: {str(e)}")
-            raise
+            raise SystemExit(1)
+
+        # Verify the tar file was created
+        if not self.exists(tf):
+            logging.error("Tar file '%s' is missing", tf)
+            raise SystemExit(1)
 
         # Download and untar it
         dest = os.path.join(destination, package)
@@ -473,28 +466,17 @@ class Host:
             pass
         os.chdir(dest)
 
-        # Ensure proper path format for SFTP
-        remote_path = tf.replace("\\", "/")
-        if remote_path.startswith("//"):
-            remote_path = remote_path[1:]  # Remove one leading slash if there are two
-
-        logging.debug(f"Attempting to download from remote path: {remote_path}")
+        logging.debug(f"Attempting to download from remote path: {tf}")
         try:
-            # Check if file exists by trying to stat it
-            try:
-                self.connection.sftp().stat(remote_path)
-            except FileNotFoundError:
-                raise FileNotFoundError(f"Remote file not found: {remote_path}")
-
-            self.connection.get(remote_path)
+            self.connection.get(tf.replace("\\", "/"))
         except Exception as e:
-            logging.error(f"Download failed for {remote_path}: {str(e)}")
-            raise
-        with tarfile.open("sisyphus.tar", "r") as tar:
+            logging.error(f"Download failed for {tf}: {str(e)}")
+            raise SystemExit(1)
+        with tarfile.open(tf_name, "r") as tar:
             tar.extractall()
 
         # Cleanup
-        os.remove("sisyphus.tar")
+        os.remove(tf_name)
         self.rm(tf)
 
         logging.info("Done")
