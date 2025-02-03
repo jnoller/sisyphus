@@ -11,8 +11,8 @@ LINUX_TYPE = "linux"
 WINDOWS_TYPE = "windows"
 LINUX_USER = "ec2-user"
 WINDOWS_USER = "dev-admin"
-LINUX_TOPDIR = "/tmp"
-WINDOWS_TOPDIR = "\\"
+LINUX_TOPDIR = "/tmp"       # These two have to be a directory,
+WINDOWS_TOPDIR = "\\tmp"    # not the root of a device like / or \\
 CONDA_PACKAGES = "conda-build distro-tooling::anaconda-linter git anaconda-client conda-package-handling"
 BUILD_OPTIONS = "--error-overlinking -c ai-staging"
 ACTIVATE = "conda activate sisyphus &&"
@@ -416,18 +416,38 @@ class Host:
         # Transmute packages if needed
         self.transmute(package)
 
+        # Check whether there are packaes to download, if not bail out
         builddir = self.path(package, "build")
-        tf = self.topdir + self.separator + "sisyphus.tar"
-        logging.info("Downloading package tarballs in '%s%s%s'", builddir, self.separator, self.pkgdir)
+        pkgdir = self.path_join(builddir, self.pkgdir)
+        files = [self.path_join(self.pkgdir, f) for f in self.ls(pkgdir) if f.endswith('.tar.bz2') or f.endswith('.conda')]
+        if not files:
+            logging.warning("No packages to download")
+            return
+
+        tf_name = f"sisyphus_{package}_{self.type}.tar"
+        tf = self.path_join(self.topdir, tf_name)
+
 
         # Create a tarball containing either just packages or the whole build directory
-        if all:
-            self.run(f"cd {self.sisyphus_dir} && cd .. && tar -cf {tf} sisyphus")
-        else:
-            if self.type == LINUX_TYPE:
-                self.run(f"cd {builddir} && tar -cf {tf} {self.pkgdir}/*.conda {self.pkgdir}/*.tar.bz2 2>/dev/null || true")
-            elif self.type == WINDOWS_TYPE:
-                self.run(f'cd {builddir} && tar -cf {tf} $(dir /s {self.pkgdir}\\*.conda {self.pkgdir}\\*.tar.bz2 2>nul )', quiet=True)
+        try:
+            if all:
+                logging.info("Downloading complete Sisyphus data at '%s'", self.sisyphus_dir)
+                self.run(f"cd {self.topdir} && tar -cf {tf} sisyphus")
+            else:
+                logging.info("Downloading %d package tarballs in '%s'", len(files), pkgdir)
+                if self.type == LINUX_TYPE:
+                    self.run(f"cd {builddir} && tar -cf {tf} {" ".join(files)} 2>/dev/null || true")
+                elif self.type == WINDOWS_TYPE:
+                    self.run(f'cd {builddir} && tar -cf {tf} {" ".join(files)} 2>nul )', quiet=True)
+
+        except Exception as e:
+            logging.error(f"Failed to create tar file: {str(e)}")
+            raise SystemExit(1)
+
+        # Verify the tar file was created
+        if not self.exists(tf):
+            logging.error("Tar file '%s' is missing", tf)
+            raise SystemExit(1)
 
         # Download and untar it
         dest = os.path.join(destination, package)
@@ -445,12 +465,18 @@ class Host:
         except:
             pass
         os.chdir(dest)
-        self.connection.get(tf.replace("\\", "/"))
-        with tarfile.open("sisyphus.tar", "r") as tar:
+
+        logging.debug(f"Attempting to download from remote path: {tf}")
+        try:
+            self.connection.get(tf.replace("\\", "/"))
+        except Exception as e:
+            logging.error(f"Download failed for {tf}: {str(e)}")
+            raise SystemExit(1)
+        with tarfile.open(tf_name, "r") as tar:
             tar.extractall()
 
         # Cleanup
-        os.remove("sisyphus.tar")
+        os.remove(tf_name)
         self.rm(tf)
 
         logging.info("Done")
