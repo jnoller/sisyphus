@@ -4,7 +4,7 @@ import urllib.request
 import urllib.error
 
 from .host import Host
-from ..pushbutan.src.pushbutan.pushbutan import Pushbutan
+from pushbutan.src.pushbutan.pushbutan import Pushbutan
 
 
 def download(url, path):

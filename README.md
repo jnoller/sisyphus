@@ -31,13 +31,15 @@ Sisyphus automates the build processes documented in:
 
 ## Setup & Usage
 
-You will need to have `conda`.
+You will need to have `conda` and `git` installed.
 
 ```
-conda create -n sisyphus -c conda-forge python click fabric requests
+conda create -n sisyphus -c conda-forge python pip
 conda activate sisyphus
+git clone git@github.com:anaconda/sisyphus.git
 cd sisyphus
-pip install -e . --no-deps
+git submodule update --init
+pip install -e .
 ```
 
 
