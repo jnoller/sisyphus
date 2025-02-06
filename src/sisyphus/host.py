@@ -31,6 +31,7 @@ class Host:
             self.separator = "/"
             self.topdir = LINUX_TOPDIR
             self.touch = "touch"
+            self.cat = "cat"
             self.run("conda init")
             self.pkgdir = "linux-64"
         elif self.__test_connection(WINDOWS_USER, "ver", WINDOWS_TYPE):
@@ -39,6 +40,7 @@ class Host:
             self.separator = "\\"
             self.topdir = WINDOWS_TOPDIR
             self.touch = "copy nul"
+            self.cat = "type"
             self.run("C:\\miniconda3\\Scripts\\conda.exe init")
             self.pkgdir = "win-64"
         else:
@@ -398,11 +400,7 @@ class Host:
             self.wait(package)
 
         logfile = self.path(package, "build.log")
-        if self.type == LINUX_TYPE:
-            cat = "cat"
-        elif self.type == WINDOWS_TYPE:
-            cat = "type"
-        r = self.run(f"{cat} {logfile}")
+        r = self.run(f"{self.cat} {logfile}")
         print(r)
 
 

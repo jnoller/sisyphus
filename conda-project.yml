@@ -1,7 +1,0 @@
-name: sisyphus
-environments:
-  sisyphus:
-    - environment.yml
-
-commands:
-  sisyphus: python -m sisyphus.main

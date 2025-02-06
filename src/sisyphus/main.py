@@ -4,6 +4,7 @@ import os
 
 from .build import Build
 from .host import Host
+from .util import create_gpu_instance, stop_instance
 
 
 HELP_CONTEXT = dict(help_option_names=["-h", "--help"])
@@ -121,7 +122,7 @@ def watch(host, package, log_level):
 @click.option("-H", "--host", required=True, help="IP or FQDN of the build host.")
 @click.option("-P", "--package", required=True, help="Name of the package being built.")
 @click.option("-C", "--channel", required=True, help="Target channel on anaconda.org to upload the packages.")
-@click.option("-T", "--token", required=True, help="Token for the target channel on anaconda.org.")
+@click.option("-t", "--token", required=True, help="Token for the target channel on anaconda.org.")
 @click.option("-l", "--log-level", type=click.Choice(["error", "warning", "info", "debug"], case_sensitive=False),
               default="info", show_default=True, help="Logging level.")
 def upload(host, package, channel, token, log_level):
@@ -215,6 +216,44 @@ def wait(host, package, log_level):
     h = Host(host)
     if not h.wait(package):
         raise SystemExit(1)
+
+
+@cli.command(context_settings=HELP_CONTEXT)
+@click.option("--linux", is_flag=True, help="Create a Linux GPU instance.")
+@click.option("--windows", is_flag=True, help="Create a Windows GPU instance.")
+@click.option("-t", "--instance-type", type=click.Choice(["g4dn.4xlarge", "p3.2xlarge"]),
+              default="g4dn.4xlarge", show_default=True, help="EC2 GPU instance type.")
+@click.option("--lifetime", default="24", show_default=True,
+              help="Hours before instance termination.")
+@click.option("--token", help="GitHub token (defaults to GITHUB_TOKEN environment variable).")
+@click.option("-l", "--log-level", type=click.Choice(["error", "warning", "info", "debug"], case_sensitive=False),
+              default="info", show_default=True, help="Logging level.")
+def start_host(linux, windows, instance_type, lifetime, token, log_level):
+    """
+    Create a Linux or Windows GPU instance using rocket-platform.
+    """
+    setup_logging(log_level)
+
+    if not linux and not windows:
+        raise click.UsageError("Either --linux or --windows must be specified")
+    if linux and windows:
+        raise click.UsageError("Only one of --linux or --windows can be specified")
+
+    create_gpu_instance(token, linux, instance_type, lifetime)
+
+
+@cli.command(context_settings=HELP_CONTEXT)
+@click.argument("id_or_ip")
+@click.option("--token", help="GitHub token (defaults to GITHUB_TOKEN environment variable).")
+@click.option("-l", "--log-level", type=click.Choice(["error", "warning", "info", "debug"], case_sensitive=False),
+              default="info", show_default=True, help="Logging level.")
+def stop_host(id_or_ip, token, log_level):
+    """
+    Stop a GPU instance by ID or IP using rocket-platform.
+    """
+    setup_logging(log_level)
+
+    stop_instance(token, id_or_ip)
 
 
 if __name__ == "__main__":
