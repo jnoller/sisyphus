@@ -20,7 +20,7 @@ Sisyphus currently supports building the following packages with more planned:
 ## Prerequisites
 
 To use Sisyphus, you need:
-- Access to rocket-platform dev instances ([documentation][1], TL:DR: run the [workflow][2], choose `linux-64` or `win-64`, select `g4dn.4xlarge` for the instance type, do not set a CUDA toolkit version)
+- Access to rocket-platform dev instances ([documentation][1])
 - Active Anaconda VPN connection
 - Unix-like system (Linux, MacOS) for running the tool
 
@@ -31,22 +31,29 @@ Sisyphus automates the build processes documented in:
 
 ## Setup & Usage
 
-Sisyphus uses [`conda-project`](https://github.com/conda-incubator/conda-project).
-You will need to have `conda` and `conda-project` installed.
+You will need to have `conda` and `git` installed.
 
 ```
-conda install -c conda-forge conda-project
-```
-
-Activating the conda project environment and installing the sisyphus package:
-
-```
+conda create -n sisyphus -c conda-forge python pip
+conda activate sisyphus
+git clone git@github.com:anaconda/sisyphus.git
 cd sisyphus
-conda project activate
-pip install -e . --no-deps
+git submodule update --init
+pip install -e .
 ```
+
 
 ### TL;DR (full example)
+
+Start a host:
+
+```
+sisyphus start-host --linux
+```
+
+Use `--windows` for a Windows host instead.
+
+Below we'll assume the above command returned the host IP address `1.2.3.4`.
 
 Build `llama.cpp` on host `1.2.3.4`:
 
@@ -55,55 +62,83 @@ sisyphus build -H 1.2.3.4 -P llama.cpp
 ```
 
 This will connect to the host, determine if it's Linux or Windows, prepare it to run CUDA builds, prepare the build,
-run it, then show the progress in real-time. When the build completes, you can retrieve the built packages like this:
+run it, then show the progress in real-time.
+
+If you lose connection to the host, which isn't unusual, you can resume watching the build process. Losing the connection will never interrupt builds.
+
+```
+sisyphus watch -H 1.2.3.4 -P llama.cpp
+```
+
+When the build completes, you can retrieve the built packages like this:
 
 ```
 sisyphus download -H 1.2.3.4 -P llama.cpp
 ```
 
+Stop the host when you're done:
+
+```
+sisyphus stop-host 1.2.3.4
+```
+
 
 ### Getting help
 
+Get general help with:
+
 ```
 > sisyphus --help
-Usage: sisyphus [OPTIONS] COMMAND [ARGS]...
-
-Options:
-  -h, --help  Show this message and exit.
-
-Commands:
-  build     Build a package on the host.
-  download  Download built packages from the remote host.
-  log       Print build log to standard output (does not update in real-time).
-  prepare   Prepare the host for building.
-  status    Print the build status.
-  transmute Transmute .tar.bz2 packages to .conda packages.
-  upload    Upload built packages on the remote host to anaconda.org.
-  wait      Wait for the build to finish and set exit code based on result.
-  watch     Watch build in real-time if a package name is passed, otherwise watch the prepare process.
 ```
 
-### Preparing the host
+Get help for a specific command with:
 
-The remote host can optionally be prepared manually to run CUDA builds.
-This is done automatically by the `build` command, so in a normal workflow it isn't needed.
+```
+> sisyphus <command> --help
+```
+
+For example:
+
+```
+> sisyphus build --help
+```
+
+Commands often have options not discussed here for the sake of brevity.
+
+
+### Start a new host
+
+Start a new linux host with:
+
+```
+sisyphus start-host --linux
+```
+
+Start a new windows host with:
+
+```
+sisyphus start-host --windows
+```
+
+This will create a new GPU instance using rocket-platform and return its IP address. By default, it creates a Linux `g4dn.4xlarge` instance with a 24-hour lifetime.
+
+You will need to provide a GitHub token for authentication (`workflow` scope, SSO authenticated). Either set the `GITHUB_TOKEN` environment variable or pass the `--token` option.
+
+> [!NOTE]
+> The system may sometimes fail to retrieve the workflow run from rocket-platform. This is an infrequent but known bug which we haven't been able to resolve yet.
+> When that happens, you will have to go to https://github.com/anaconda-distribution/rocket-platform/actions/workflows/start.yml to locate the workflow (look for your user name and the triggered time).
+> Select it, click on `Start`, `Start Instance`, then locate the `INSTANCE_IDS` variable which will list your instance ID.
+> Finally go to https://github.com/anaconda-distribution/rocket-platform/actions/workflows/stop.yml, and use this ID to run a workflow to stop the instance.
+> Then run the `start-host` command again.
+
+
+### Prepare the host
+
+This step is optional. The `build` command will automatically prepare the host if needed.
 
 The `prepare` command will create a work directory, set up Conda, and create a Conda environment.
 On Windows, it will also install CUDA software and drivers, which takes more time.
 This only needs to be done once.
-
-```
-> sisyphus prepare --help
-Usage: sisyphus prepare [OPTIONS]
-
-  Prepare the host for building.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
-```
 
 To prepare the host, run:
 
@@ -115,35 +150,20 @@ Where `<host>` is the IP address or FQDN of your remote host.
 
 Remember to make sure your SSH key is correctly configured (see [rocket platform dev instance docs][1]).
 
-Notes:
-- You do not need to define the host type, Sisyphus will automatically detect if the remote host is Linux or Windows.
-- It will immediately disconnect from the host but the preparation will continue on the host asynchronously protecting against local system, network or vpn issues.
+> [!NOTE]
+> You do not need to define the host type, Sisyphus will automatically detect if the remote host is Linux or Windows.
+> It will immediately disconnect from the host but the preparation will continue on the host asynchronously protecting against local system, network or vpn issues.
 
 Logs for the Conda and, on Windows, both CUDA jobs are saved on the remote host in the work directory.
-On Linux this is at `/tmp/sisyphus`, and on Windows it's at `C:\sisyphus`.
+On Linux this is at `/tmp/sisyphus`, and on Windows it's at `C:\tmp\sisyphus`.
 When `ssh`ing to the host for checking these logs, remember you should login with the `ec2-user` name on Linux and `dev-admin` on Windows.
 
 
-### Watching the preparation progress
+### Watch the preparation progress
 
-This command is useful in case you lose the connection to the host during the prepare process (unlikely but not impossible).
+This step is for when you run the `prepare` command manually, and only useful in case you lose the connection to the host during the prepare process (unlikely but not impossible).
 
-```
-> sisyphus watch --help
-Usage: sisyphus watch [OPTIONS]
-
-  Watch build in real-time if a package name is passed, otherwise watch the
-  prepare process. Set exit code on error.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package being built.
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
-```
-
-To watch the above preparation process, do:
+To watch the preparation process, do:
 
 ```
 > sisyphus watch -H <host>
@@ -153,26 +173,9 @@ On the default logging level (info), the output will inform in real-time of the 
 In case of failure, an error exit code will be returned for use in automation, or even a Shell script or one-liner.
 
 
-### Building the package
+### Build the package
 
-```
-> sisyphus build --help
-Usage: sisyphus build [OPTIONS]
-
-  Build a package on the host.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package to build.  [required]
-  -B, --branch TEXT               Branch to build from in the feedstock's
-                                  repository.
-  --no-watch                      Don't watch the build process after it starts.
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
-```
-
-Start the build with:
+Start a build with:
 
 ```
 > sisyphus build -H <host> -P <package>
@@ -186,7 +189,7 @@ Sisyphus will prepare the host to run CUDA builds if needed, prepare all the dat
 If you lose connection to the host during the build process, which isn't unusual, you can use the `watch` command like below to resume watching the build process. Losing the connection will never interrupt builds.
 
 
-### Watching the build process
+### Watch the build process
 
 This command is useful in case you lose the connection to the host during the build process, which is a common occurrence.
 
@@ -196,24 +199,14 @@ It's the same as above for the preparation, except this time we pass the package
 > sisyphus watch -H <host> -P <package>
 ```
 
-On the default logging level sisyphus will show the build output in real-time.
+On the default logging level, sisyphus will show the build output in real-time.
 Here too, an exit code will be returned at the end for use in automation.
 
 
-### Check build status
+### Check the build status
 
 ```
-> sisyphus status --help
-Usage: sisyphus status [OPTIONS]
-
-  Print the build status.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package being built.  [required]
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
+> sisyphus status -H <host> -P <package>
 ```
 
 This will print one of the following statuses:
@@ -228,93 +221,54 @@ The command returns immediately without waiting for the build to finish.
 ### Wait for build completion
 
 ```
-> sisyphus wait --help
-Usage: sisyphus wait [OPTIONS]
-
-  Wait for the build to finish and set exit code based on result.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package being built.  [required]
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
+> sisyphus wait -H <host> -P <package>
 ```
 
-This command will wait for the build to finish and return an exit code of 0 if the build succeeded, or 1 if it failed.
+Wait for the build to finish and return an exit code of 0 if the build succeeded, or 1 if it failed.
+
 This is useful for automation and scripting.
 
 
 ### Print or download the build log
 
 ```
-> sisyphus log --help
-Usage: sisyphus log [OPTIONS]
-
-  Print build log to standard output (does not update in real-time).
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package being built.  [required]
-  --no-wait                       Don't wait for the build to finish before printing the log.
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
+> sisyphus log -H <host> -P <package>
 ```
 
-This will print the build log in your terminal. By default, it will wait for the build to finish before printing the log, unless `--no-wait` is specified.
-The output can be piped to a pager like `less` or be redirected to a file to save it.
+Print the build log in your terminal. By default, it will wait for the build to finish before printing the log, unless `--no-wait` is specified.
+The output can, and probably should, be piped to a pager like `less` or be redirected to a file to save it.
+
+
+### Transmute packages
+
+This step is optional. The `download` command will automatically transmute packages as needed before downloading them.
+
+Transmute built packages with:
+
+```
+sisyphus transmute -H <host> -P <package>
+```
+
+Sisyphus will automaticaly convert all `.tar.bz2` packages to `.conda` packages, and vice-versa, as needed.
 
 
 ### Download built packages
 
-```
-> sisyphus download --help
-Usage: sisyphus download [OPTIONS]
-
-  Download built packages from the remote host.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package being built.  [required]
-  -d, --destination TEXT          Destination directory.
-  -a, --all                       Download the whole work directory for debugging.
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
-```
-
-Download packages with:
+Download built packages with:
 
 ```
 sisyphus download -H <host> -P <package>
 ```
 
+Sisyphus will automatically transmute packages as needed before downloading them.
+
 
 ### Uploading packages to anaconda.org
 
-```
-> sisyphus upload --help
-Usage: sisyphus upload [OPTIONS]
-
-  Upload built packages on the remote host to anaconda.org.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package being built.  [required]
-  -C, --channel TEXT              Target channel on anaconda.org to upload the
-                                  packages.  [required]
-  -T, --token TEXT                Token for the target channel on
-                                  anaconda.org.  [required]
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
-```
-
-Upload packages with:
+Upload packages to anaconda.org with:
 
 ```
-sisyphus upload -H <host> -P <package> -C <channel> -T <token>
+sisyphus upload -H <host> -P <package> -C <channel> -t <token>
 ```
 
 > [!IMPORTANT]
@@ -323,27 +277,19 @@ sisyphus upload -H <host> -P <package> -C <channel> -T <token>
 > https://github.com/anaconda-distribution/rocket-platform/actions/workflows/codesign-windows.yml
 
 
-### Transmute packages
+### Stop the host
+
+Don't forget to stop the host when you're done. Hosts cost money per hour they run.
+
+Stop a host with:
 
 ```
-> sisyphus transmute --help
-Usage: sisyphus transmute [OPTIONS]
-
-  Transmute .tar.bz2 packages to .conda packages.
-
-Options:
-  -H, --host TEXT                 IP or FQDN of the build host.  [required]
-  -P, --package TEXT              Name of the package being built.  [required]
-  -l, --log-level [error|warning|info|debug]
-                                  Logging level.  [default: info]
-  -h, --help                      Show this message and exit.
+sisyphus stop-host  <host>
 ```
 
-Transmute packages with:
+Where `<host>` can be either the IP address or the instance ID. If using the IP address, the tool will automatically retrieve the instance ID from the host before stopping it.
 
-```
-sisyphus transmute -H <host> -P <package>
-```
+You will need to provide a GitHub token for authentication. Either set the `GITHUB_TOKEN` environment variable or pass the `--token` option.
 
 
 [1]: https://github.com/anaconda-distribution/rocket-platform/tree/main/machine-images#dev-instances
